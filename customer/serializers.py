@@ -1,6 +1,9 @@
 # customer/serializers.py
 from rest_framework import serializers
-from .models import Customer
+
+from .models import Customer, EmailOTP
+from .validators import validate_password
+
 
 class MessageSerializer(serializers.Serializer):
     message = serializers.CharField()
@@ -8,11 +11,14 @@ class MessageSerializer(serializers.Serializer):
 
 class SendEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
+    purpose = serializers.ChoiceField(choices=EmailOTP.PURPOSE_CHOICES, default="VERIFY")
 
 
 class VerifyEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    otp = serializers.CharField(max_length=6)
+    code = serializers.CharField(max_length=6)
+    purpose = serializers.ChoiceField(choices=EmailOTP.PURPOSE_CHOICES, default="VERIFY")
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -37,13 +43,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = Customer
         fields = ('email', 'password', 'password2', 'first_name', 'last_name')
 
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField()
 
+
 class TokenSerializer(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()
+
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -51,29 +60,16 @@ class ProfileSerializer(serializers.ModelSerializer):
         fields = ('email', 'first_name', 'last_name', 'image')
         read_only_fields = ('email',)
 
-class ResetPasswordSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    code = serializers.CharField(max_length=6, write_only=True)
 
-    password = serializers.CharField(
-        write_only=True,
-        style={"input_type": "password"}
-    )
-    confirm_password = serializers.CharField(
-        write_only=True,
-        style={"input_type": "password"}
-    )
+class ResetPasswordSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        password = attrs.get("password")
-        confirm_password = attrs.get("confirm_password")
-
-        if password != confirm_password:
+        if attrs["password"] != attrs["confirm_password"]:
             raise serializers.ValidationError(
                 {"password": "Parollar mos emas"}
             )
 
-        # 8 ta belgi, harf + son
-        validate_password(password)
-
+        validate_password(attrs["password"])
         return attrs

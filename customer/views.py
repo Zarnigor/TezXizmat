@@ -1,30 +1,19 @@
-import random
-from django.conf import settings
-from django.core.mail import send_mail
-from django.utils import timezone
-from rest_framework.permissions import AllowAny
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 
-from drf_spectacular.utils import (
-    extend_schema,
-    OpenApiParameter,
-    OpenApiResponse
-)
-
-from .models import Customer, EmailOTP
 from .serializers import (
     SendEmailSerializer,
     RegisterSerializer,
     ResetPasswordSerializer,
-    ProfileSerializer
+    ProfileSerializer, VerifyEmailSerializer
 )
-from .validators import validate_password
+from .utils import generate_otp, send_email
 
 @extend_schema(
     request=SendEmailSerializer,
@@ -32,65 +21,60 @@ from .validators import validate_password
 )
 class SendEmailOTPView(APIView):
     permission_classes = [AllowAny]
-
     def post(self, request):
         serializer = SendEmailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data['email']
-        code = str(random.randint(100000, 999999))
+        email = serializer.validated_data["email"]
+        purpose = serializer.validated_data["purpose"]
 
-        obj = EmailOTP.objects.filter(email=email)
-        if obj:
-            obj.code = code
-        else:
-            EmailOTP.objects.create(email=email, code=code)
+        EmailOTP.objects.filter(email=email, purpose=purpose).delete()
 
-        send_mail(
-            subject="Tasdiqlash kodi",
-            message=f"Sizning kodingiz: {code}",
-            from_email=settings.EMAIL_HOST_USER,
-            recipient_list=[email],
+        otp = EmailOTP.objects.create(
+            email=email,
+            code=generate_otp(),
+            purpose=purpose,
+            state=EmailOTP.STATE_SEND
         )
 
-        return Response(
-            {"detail": "Kod emailga yuborildi"},
-            status=status.HTTP_200_OK
-        )
+        send_email(email, otp.code)
 
-from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
-from .models import EmailOTP
-from django.utils.timezone import now
-from datetime import timedelta
+        return Response({"detail": "Kod emailga yuborildi"})
 
 @extend_schema(
-    parameters=[
-        OpenApiParameter("email", str),
-        OpenApiParameter("code", str),
-    ],
-    responses={200: OpenApiResponse(description="Email tasdiqlandi")}
+    request=VerifyEmailSerializer,
+    responses={
+        200: OpenApiResponse(description="Email tasdiqlandi"),
+        400: OpenApiResponse(description="Xatolik")
+    }
 )
 class VerifyEmailView(APIView):
     permission_classes = [AllowAny]
+    def post(self, request):
+        serializer = VerifyEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-    def get(self, request):
-        email = request.GET.get("email", "").strip()
-        code = request.GET.get("code", "").strip()
+        email = serializer.validated_data["email"]
+        code = serializer.validated_data["code"]
+        purpose = serializer.validated_data["purpose"]
 
-        otp = EmailOTP.objects.filter(email=email, code=code).last()
+        otp = EmailOTP.objects.filter(
+            email=email,
+            code=code,
+            purpose=purpose,
+            state=EmailOTP.STATE_SEND
+        ).last()
 
-        if not otp:
-            return Response({"error": "Kod noto‘g‘ri"}, status=400)
+        if not otp or otp.is_expired():
+            return Response(
+                {"error": "Kod noto‘g‘ri yoki eskirgan"},
+                status=400
+            )
 
-        if otp.is_expired():
-            return Response({"error": "Kod muddati tugagan"}, status=400)
+        otp.state = EmailOTP.STATE_VERIFIED
+        otp.save()
 
-        otp.is_verified = True
-        otp.save()  # 🔥 BU MUHIM
-        return Response({"detail": "Email tasdiqlandi"}, status=200)
+        return Response({"detail": "Kod tasdiqlandi"})
 
 
 @extend_schema(
@@ -107,7 +91,7 @@ class RegisterView(APIView):
 
         verified_otp = EmailOTP.objects.filter(
             email=data['email'],
-            is_verified=True
+            state="VERIFIED"
         ).last()
 
         if not verified_otp:
@@ -122,7 +106,7 @@ class RegisterView(APIView):
                 status=400
             )
 
-        user = Customer.objects.create_user(
+        Customer.objects.create_user(
             email=data['email'],
             password=data['password'],
             first_name=data['first_name'],
@@ -130,7 +114,6 @@ class RegisterView(APIView):
             is_active=True
         )
 
-        # OTP ni ishlatilgan deb belgilaymiz (ixtiyoriy)
         verified_otp.delete()
 
         return Response({"detail": "Ro‘yxatdan o‘tildi"}, status=201)
@@ -154,13 +137,21 @@ class LogoutView(APIView):
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        responses={200: ProfileSerializer}
+    )
     def get(self, request):
         serializer = ProfileSerializer(request.user)
         return Response(serializer.data)
 
+
 class ProfileUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        request=ProfileSerializer,
+        responses={200: ProfileSerializer}
+    )
     def put(self, request):
         serializer = ProfileSerializer(
             request.user, data=request.data
@@ -169,6 +160,10 @@ class ProfileUpdateView(APIView):
         serializer.save()
         return Response(serializer.data)
 
+    @extend_schema(
+        request=ProfileSerializer,
+        responses={200: ProfileSerializer}
+    )
     def patch(self, request):
         serializer = ProfileSerializer(
             request.user, data=request.data, partial=True
@@ -177,27 +172,32 @@ class ProfileUpdateView(APIView):
         serializer.save()
         return Response(serializer.data)
 
+from .serializers import ResetPasswordSerializer
+from .models import EmailOTP
+from .models import Customer
 
-@extend_schema(
-    request=ResetPasswordSerializer,
-    responses={200: OpenApiResponse(description="Parol yangilandi")}
-)
 class ResetPasswordView(APIView):
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data['email']
-        code = serializer.validated_data['code']
-        password = serializer.validated_data['password']
+        otp = EmailOTP.objects.filter(
+            purpose=EmailOTP.PURPOSE_RESET,
+            state=EmailOTP.STATE_VERIFIED
+        ).last()
 
-        otp = EmailOTP.objects.filter(email=email, code=code).last()
-        if not otp or otp.is_expired():
-            return Response({"error": "Kod noto‘g‘ri yoki eskirgan"}, status=400)
+        if not otp:
+            return Response(
+                {"error": "Avval kodni tasdiqlang"},
+                status=400
+            )
 
-        user = Customer.objects.get(email=email)
-        validate_password(password)
-        user.set_password(password)
+        user = Customer.objects.get(email=otp.email)
+
+        user.set_password(serializer.validated_data["password"])
         user.save()
+
+        otp.state = EmailOTP.STATE_USED
+        otp.save()
 
         return Response({"detail": "Parol muvaffaqiyatli yangilandi"})
