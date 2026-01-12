@@ -1,9 +1,8 @@
 from django.contrib.auth.base_user import AbstractBaseUser
+from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
-from datetime import timedelta
-from django.utils.timezone import now
-from django.contrib.auth.base_user import BaseUserManager
+
 
 class CustomerManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -71,6 +70,7 @@ class EmailOTP(models.Model):
         default=STATE_SEND
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
 
     def is_expired(self):
         return timezone.now() > self.created_at + timedelta(minutes=1)
