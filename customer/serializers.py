@@ -8,6 +8,9 @@ from .utils import send_email, generate_otp
 from .validators import validate_password
 
 
+class EmptySerializer(serializers.Serializer):
+    pass
+
 class MessageSerializer(serializers.Serializer):
     message = serializers.CharField()
 

@@ -12,7 +12,7 @@ from .serializers import (
     SendEmailSerializer,
     RegisterSerializer,
     ResetPasswordSerializer,
-    ProfileSerializer, VerifyEmailSerializer, ResendEmailSerializer
+    ProfileSerializer, VerifyEmailSerializer, ResendEmailSerializer, EmptySerializer, MessageSerializer, LoginSerializer
 )
 
 
@@ -97,18 +97,24 @@ class RegisterView(APIView):
 
 class LoginView(TokenObtainPairView):
     permission_classes = [AllowAny]
+    serializer_class = LoginSerializer
     """
     JWT login (email + password)
     """
     pass
 
 
-class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
+from rest_framework.generics import GenericAPIView
 
+class LogoutView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = EmptySerializer
+
+    @extend_schema(
+        responses={200: MessageSerializer}
+    )
     def post(self, request):
         return Response({"detail": "Logout muvaffaqiyatli"}, status=200)
-
 
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
@@ -149,10 +155,16 @@ class ProfileUpdateView(APIView):
         return Response(serializer.data)
 
 
-@extend_schema(request=ResetPasswordSerializer)
-class ResetPasswordView(APIView):
+class ResetPasswordView(GenericAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = ResetPasswordSerializer
+
+    @extend_schema(
+        request=ResetPasswordSerializer,
+        responses={200: MessageSerializer}
+    )
     def post(self, request):
-        serializer = ResetPasswordSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         otp = EmailOTP.objects.filter(
@@ -167,7 +179,6 @@ class ResetPasswordView(APIView):
             )
 
         user = Customer.objects.get(email=otp.email)
-
         user.set_password(serializer.validated_data["password"])
         user.save()
 
@@ -175,6 +186,7 @@ class ResetPasswordView(APIView):
         otp.save()
 
         return Response({"detail": "Parol muvaffaqiyatli yangilandi"})
+
 
 
 @extend_schema(
