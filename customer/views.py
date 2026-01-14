@@ -1,9 +1,11 @@
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import Customer
@@ -95,14 +97,27 @@ class RegisterView(APIView):
         return Response({"detail": "Ro‘yxatdan o‘tildi"}, status=201)
 
 
-class LoginView(TokenObtainPairView):
+class LoginView(APIView):
     permission_classes = [AllowAny]
-    serializer_class = LoginSerializer
-    """
-    JWT login (email + password)
-    """
-    pass
 
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data["user"]
+        refresh = RefreshToken.for_user(user)
+
+        # faqat serializable tiplar yuborish kerak
+        return Response(
+            {
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "email": user.email,   # username o‘rniga email
+                "first_name": user.first_name,
+                "last_name": user.last_name
+            },
+            status=status.HTTP_200_OK
+        )
 
 from rest_framework.generics import GenericAPIView
 
@@ -126,6 +141,15 @@ class ProfileView(APIView):
         serializer = ProfileSerializer(request.user)
         return Response(serializer.data)
 
+    @extend_schema(
+        request=ProfileSerializer,
+        responses={200: OpenApiResponse(description="Profile updated successfully")}
+    )
+    def put(self, request):
+        serializer = ProfileSerializer(data=request.data, instance=request.user, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ProfileUpdateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -167,25 +191,38 @@ class ResetPasswordView(GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        email = serializer.validated_data["email"]
+
         otp = EmailOTP.objects.filter(
+            email=email,
             purpose=EmailOTP.PURPOSE_RESET,
             state=EmailOTP.STATE_VERIFIED
         ).last()
 
         if not otp:
             return Response(
-                {"error": "Avval kodni tasdiqlang"},
+                {"error": "Avval emailga yuborilgan kodni tasdiqlang"},
                 status=400
             )
 
-        user = Customer.objects.get(email=otp.email)
+        try:
+            user = Customer.objects.get(email=email)
+        except Customer.DoesNotExist:
+            return Response(
+                {"error": "Foydalanuvchi topilmadi"},
+                status=404
+            )
+
         user.set_password(serializer.validated_data["password"])
-        user.save()
+        user.save(update_fields=["password"])
 
         otp.state = EmailOTP.STATE_USED
-        otp.save()
+        otp.save(update_fields=["state"])
 
-        return Response({"detail": "Parol muvaffaqiyatli yangilandi"})
+        return Response(
+            {"message": "Parol muvaffaqiyatli yangilandi"},
+            status=200
+        )
 
 
 

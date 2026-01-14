@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.contrib.auth import authenticate
 from django.utils.timezone import now
 from rest_framework import serializers
 
@@ -56,7 +57,7 @@ class VerifyEmailSerializer(serializers.Serializer):
             email=email,
             code=code,
             purpose=purpose,
-            state=EmailOTP.STATE_PENDING
+            state=EmailOTP.STATE_SEND
         ).last()
 
         if not otp:
@@ -98,10 +99,27 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = Customer
         fields = ('email', 'password', 'password2', 'first_name', 'last_name')
 
+# serializers.py
+from django.contrib.auth import authenticate
+from rest_framework import serializers
+from .models import Customer  # custom user
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    password = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        email = attrs.get("email")
+        password = attrs.get("password")
+
+        user = authenticate(email=email, password=password)  # agar USERNAME_FIELD=email
+        if not user:
+            raise serializers.ValidationError("Email yoki password noto‘g‘ri")
+        if not user.is_active:
+            raise serializers.ValidationError("User aktiv emas")
+
+        attrs["user"] = user
+        return attrs
 
 
 class TokenSerializer(serializers.Serializer):
@@ -112,11 +130,12 @@ class TokenSerializer(serializers.Serializer):
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
-        fields = ('email', 'first_name', 'last_name', 'image')
+        fields = ('email', 'first_name', 'last_name')
         read_only_fields = ('email',)
 
 
 class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
 

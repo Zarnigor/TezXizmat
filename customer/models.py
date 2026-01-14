@@ -27,7 +27,6 @@ class Customer(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    image = models.ImageField(upload_to='customers/', null=True, blank=True)
 
     is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
@@ -37,7 +36,6 @@ class Customer(AbstractBaseUser, PermissionsMixin):
     USERNAME_FIELD = 'email'
 
 
-# customer/models.py
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
