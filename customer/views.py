@@ -1,58 +1,21 @@
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
-from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
-
+from rest_framework.generics import GenericAPIView
 from .models import Customer
-from .models import EmailOTP
 from .serializers import (
-    SendEmailSerializer,
     RegisterSerializer,
     ResetPasswordSerializer,
-    ProfileSerializer, VerifyEmailSerializer, ResendEmailSerializer, EmptySerializer, MessageSerializer, LoginSerializer
+    ProfileSerializer,
+    EmptySerializer,
+    MessageSerializer,
+    LoginSerializer
 )
-
-
-@extend_schema(
-    request=SendEmailSerializer,
-    responses={200: OpenApiResponse(description="OTP emailga yuborildi")}
-)
-class SendEmailOTPView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = SendEmailSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        otp = serializer.save()
-
-        return Response({
-            "detail": "Kod emailga yuborildi",
-            "email": otp.email,
-            "expires_at": otp.expires_at
-        })
-
-
-@extend_schema(
-    request=VerifyEmailSerializer,
-    responses={
-        200: OpenApiResponse(description="Email tasdiqlandi"),
-        400: OpenApiResponse(description="Xatolik")
-    }
-)
-class VerifyEmailView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = VerifyEmailSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-
-        return Response({"detail": "Kod tasdiqlandi"})
+from email_otp.models import EmailOTP
 
 
 @extend_schema(
@@ -107,19 +70,17 @@ class LoginView(APIView):
         user = serializer.validated_data["user"]
         refresh = RefreshToken.for_user(user)
 
-        # faqat serializable tiplar yuborish kerak
+
         return Response(
             {
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
-                "email": user.email,   # username o‘rniga email
+                "email": user.email,
                 "first_name": user.first_name,
                 "last_name": user.last_name
             },
             status=status.HTTP_200_OK
         )
-
-from rest_framework.generics import GenericAPIView
 
 class LogoutView(GenericAPIView):
     permission_classes = [IsAuthenticated]
@@ -223,22 +184,3 @@ class ResetPasswordView(GenericAPIView):
             {"message": "Parol muvaffaqiyatli yangilandi"},
             status=200
         )
-
-
-
-@extend_schema(
-    request=ResendEmailSerializer,
-    responses={200: OpenApiResponse(description="OTP qayta yuborildi")}
-)
-class ResendEmailOTPView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = ResendEmailSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        otp = serializer.save()
-
-        return Response({
-            "detail": "Yangi kod yuborildi",
-            "expires_at": otp.expires_at
-        })

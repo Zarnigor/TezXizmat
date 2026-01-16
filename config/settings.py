@@ -31,7 +31,9 @@ INSTALLED_APPS = [
     'django_rest_passwordreset',
 
     # Local apps
+    'email_otp',
     'customer',
+    'staff'
 ]
 
 MIDDLEWARE = [
@@ -120,10 +122,30 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'TEZ XIZMAT API',
-    'DESCRIPTION': 'Local services platform',
-    'VERSION': '1.0.0',
+    "TITLE": "TezXizmat API",
+    "DESCRIPTION": "Customer va Staff auth alohida",
+    "VERSION": "1.0.0",
+
+    "SECURITY": [],  # default auth O‘CHIQLI
+
+    "COMPONENTS": {
+        "securitySchemes": {
+            "CustomerJWT": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Customer JWT token"
+            },
+            "StaffJWT": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Staff JWT token"
+            },
+        }
+    },
 }
+
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
