@@ -79,3 +79,4 @@ class ResetPasswordSerializer(serializers.Serializer):
 
         validate_password(attrs["password"])
         return attrs
+

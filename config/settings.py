@@ -126,23 +126,9 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Customer va Staff auth alohida",
     "VERSION": "1.0.0",
 
-    "SECURITY": [],  # default auth O‘CHIQLI
-
-    "COMPONENTS": {
-        "securitySchemes": {
-            "CustomerJWT": {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "JWT",
-                "description": "Customer JWT token"
-            },
-            "StaffJWT": {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "JWT",
-                "description": "Staff JWT token"
-            },
-        }
+        "SECURITY_SCHEMES": {
+        "customerBearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+        "staffBearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
     },
 }
 
