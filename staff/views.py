@@ -13,6 +13,7 @@ from .authentication import StaffJWTAuthentication
 from .permissions import IsStaffUser
 from .serializers import *
 from .tokens import create_staff_tokens
+from customer.serializers import LoginResponseSerializer, LoginSerializer
 
 
 class StaffRegisterView(APIView):
@@ -77,15 +78,15 @@ class StaffLoginView(APIView):
 
     @extend_schema(
         tags=["auth_staff"],
-        request=StaffLoginSerializer,
+        request=LoginSerializer,
         responses={
-            200: OpenApiResponse(description="JWT tokens: access, refresh"),
+            200: LoginResponseSerializer,
             400: OpenApiResponse(description="Invalid credentials / inactive"),
         },
         description="Staff login. is_active=True bo‘lishi shart (OTP verify qilingan)."
     )
     def post(self, request):
-        serializer = StaffLoginSerializer(data=request.data)
+        serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         email = serializer.validated_data["email"]

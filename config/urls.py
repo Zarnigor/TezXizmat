@@ -17,7 +17,7 @@ urlpatterns = [
     ),
     path('api/auth/', include('email_otp.urls')),
     path('api/auth/customer/', include('customer.urls')),
-    path('api/auth/staff/', include('staff.urls')),
+    path('', include('staff.urls')),
 ]
 
 if settings.DEBUG:

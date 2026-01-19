@@ -1,5 +1,7 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from .models import Customer
 from .validators import validate_password
 
@@ -36,6 +38,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ('email', 'password', 'password2', 'first_name', 'last_name')
 
 
+from django.contrib.auth import authenticate
+from rest_framework import serializers
+from rest_framework_simplejwt.tokens import RefreshToken
+
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -44,15 +51,36 @@ class LoginSerializer(serializers.Serializer):
         email = attrs.get("email")
         password = attrs.get("password")
 
-        user = authenticate(email=email, password=password)
+        user = authenticate(
+            request=self.context.get("request"),
+            email=email,
+            password=password
+        )
+
         if not user:
-            raise serializers.ValidationError("Email yoki password noto‘g‘ri")
+            raise serializers.ValidationError("Email yoki parol noto‘g‘ri")
+
         if not user.is_active:
-            raise serializers.ValidationError("User aktiv emas")
+            raise serializers.ValidationError("Akkount aktiv emas")
 
-        attrs["user"] = user
-        return attrs
+        refresh = RefreshToken.for_user(user)
 
+        return {
+            "id": user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
+
+class LoginResponseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    email = serializers.EmailField()
+    refresh = serializers.CharField()
+    access = serializers.CharField()
 
 class TokenSerializer(serializers.Serializer):
     access = serializers.CharField()

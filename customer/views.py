@@ -12,7 +12,7 @@ from .serializers import (
     ProfileSerializer,
     EmptySerializer,
     MessageSerializer,
-    LoginSerializer,
+    LoginSerializer, LoginResponseSerializer,
 )
 from email_otp.models import EmailOTP
 
@@ -60,27 +60,18 @@ class RegisterView(APIView):
         return Response({"detail": "Ro‘yxatdan o‘tildi"}, status=201)
 
 
-class LoginView(APIView):
+class LoginAPIView(APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        request=LoginSerializer,
+        responses={200: LoginResponseSerializer}
+    )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
-        user = serializer.validated_data["user"]
-        refresh = RefreshToken.for_user(user)
-
-
-        return Response(
-            {
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-                "email": user.email,
-                "first_name": user.first_name,
-                "last_name": user.last_name
-            },
-            status=status.HTTP_200_OK
-        )
 
 class LogoutView(GenericAPIView):
     permission_classes = [IsAuthenticated]

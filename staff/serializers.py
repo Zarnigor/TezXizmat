@@ -55,11 +55,6 @@ class StaffImageSerializer(serializers.ModelSerializer):
         fields = ["image"]
 
 
-class StaffLoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    password = serializers.CharField(write_only=True)
-
-
 class StaffResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
