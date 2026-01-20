@@ -33,7 +33,8 @@ INSTALLED_APPS = [
     # Local apps
     'email_otp',
     'customer',
-    'staff'
+    'staff',
+    'orders'
 ]
 
 MIDDLEWARE = [
