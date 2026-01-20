@@ -13,7 +13,7 @@ from .authentication import StaffJWTAuthentication
 from .permissions import IsStaffUser
 from .serializers import *
 from .tokens import create_staff_tokens
-from customer.serializers import LoginResponseSerializer, LoginSerializer
+from .serializers import LoginResponseSerializer, LoginSerializer
 
 
 class StaffRegisterView(APIView):

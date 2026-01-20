@@ -13,6 +13,19 @@ def validate_password_rule(password: str) -> str:
     return password
 
 
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+
+class LoginResponseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    email = serializers.EmailField()
+    refresh = serializers.CharField()
+    access = serializers.CharField()
+
 class StaffRegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=100)
