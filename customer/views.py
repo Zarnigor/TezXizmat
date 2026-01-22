@@ -1,10 +1,12 @@
 from drf_spectacular.utils import extend_schema, OpenApiResponse
+from email_otp.models import EmailOTP
 from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.generics import GenericAPIView
+from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework.generics import GenericAPIView
+
 from .models import Customer
 from .serializers import (
     RegisterSerializer,
@@ -14,8 +16,22 @@ from .serializers import (
     MessageSerializer,
     LoginSerializer, LoginResponseSerializer,
 )
-from email_otp.models import EmailOTP
 
+
+class CustomerDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        try:
+            customer = Customer.objects.get(id=id)
+        except Customer.DoesNotExist:
+            return Response(
+                {"detail": "Customer topilmadi"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ProfileSerializer(customer)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @extend_schema(
