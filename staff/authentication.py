@@ -3,7 +3,7 @@ from django.conf import settings
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.backends import TokenBackend
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.exceptions import TokenError, TokenBackendError
 from .models import Staff
 
 
@@ -21,22 +21,25 @@ class StaffJWTAuthentication(BaseAuthentication):
             return None
 
         parts = header.split()
-        if len(parts) != 2 or parts[0] != self.keyword:
+        if len(parts) != 2 or parts[0].lower() != self.keyword.lower():
             return None
 
         raw_token = parts[1]
+
+        simple_jwt = getattr(settings, "SIMPLE_JWT", {})
+
         token_backend = TokenBackend(
-            algorithm=settings.SIMPLE_JWT.get("ALGORITHM", "HS256"),
-            signing_key=settings.SIMPLE_JWT.get("SIGNING_KEY", settings.SECRET_KEY),
-            verifying_key=settings.SIMPLE_JWT.get("VERIFYING_KEY", None),
-            audience=settings.SIMPLE_JWT.get("AUDIENCE", None),
-            issuer=settings.SIMPLE_JWT.get("ISSUER", None),
-            jwk_url=settings.SIMPLE_JWT.get("JWK_URL", None),
+            algorithm=simple_jwt.get("ALGORITHM", "HS256"),
+            signing_key=simple_jwt.get("SIGNING_KEY", settings.SECRET_KEY),
+            verifying_key=simple_jwt.get("VERIFYING_KEY", None),
+            audience=simple_jwt.get("AUDIENCE", None),
+            issuer=simple_jwt.get("ISSUER", None),
+            jwk_url=simple_jwt.get("JWK_URL", None),
         )
 
         try:
             payload = token_backend.decode(raw_token, verify=True)
-        except TokenError:
+        except (TokenError, TokenBackendError):
             raise AuthenticationFailed("Invalid token")
 
         if payload.get("role") != "staff":
@@ -44,7 +47,7 @@ class StaffJWTAuthentication(BaseAuthentication):
 
         staff_id = payload.get("staff_id")
         if not staff_id:
-            raise AuthenticationFailed("Invalid staff token")
+            raise AuthenticationFailed("Invalid staff token (staff_id missing)")
 
         try:
             staff = Staff.objects.get(id=staff_id)
