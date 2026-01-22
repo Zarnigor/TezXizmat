@@ -1,5 +1,7 @@
 # staff/urls.py
 from django.urls import path
+from rest_framework_simplejwt.views import TokenRefreshView
+
 from .views import *
 
 urlpatterns = [
@@ -16,4 +18,6 @@ urlpatterns = [
     path("api/auth/staff/register/", StaffRegisterView.as_view()),
     path("api/auth/staff/profile/", StaffProfileView.as_view()),
     path("api/auth/staff/profile/image/", StaffProfileImageView.as_view()),
+
+    path("api/auth/token/refresh/", TokenRefreshView.as_view())
 ]
