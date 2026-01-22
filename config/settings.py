@@ -34,7 +34,8 @@ INSTALLED_APPS = [
     'email_otp',
     'customer',
     'staff',
-    'orders'
+    'orders',
+    'reviews'
 ]
 
 MIDDLEWARE = [
