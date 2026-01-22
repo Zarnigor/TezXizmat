@@ -17,4 +17,3 @@ class IsCustomer(BasePermission):
             return token.get("role") == "customer"
 
         return False
-s
