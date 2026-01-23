@@ -36,8 +36,8 @@ class Staff(AbstractBaseUser):
     price = models.CharField(max_length=100)
     free_time = models.CharField(max_length=255)
 
-    is_active = models.BooleanField(default=False)
-    is_staff = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=True)
 
     objects = StaffManager()
 

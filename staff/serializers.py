@@ -56,7 +56,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
         # image YO'Q
         fields = [
             "id", "email", "first_name", "last_name",
-            "profession", "comments", "description", "skills",
+            "profession",  "description", "skills",
             "price", "free_time",
             "is_active",
         ]

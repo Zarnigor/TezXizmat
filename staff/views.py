@@ -14,7 +14,7 @@ from .permissions import IsStaffUser
 from .serializers import *
 from .tokens import create_staff_tokens
 from .serializers import LoginResponseSerializer, LoginSerializer
-
+from .utils import create_staff_tokens
 
 class StaffRegisterView(APIView):
     permission_classes = [AllowAny]
@@ -31,7 +31,7 @@ class StaffRegisterView(APIView):
         staff = serializer.save()
         return Response(StaffProfileSerializer(staff).data, status=status.HTTP_201_CREATED)
 
-
+#@extend_schema(security=[{"jwtAuth": []}])
 class StaffProfileView(APIView):
     authentication_classes = [StaffJWTAuthentication]
     permission_classes = [IsStaffUser]
@@ -55,6 +55,27 @@ class StaffProfileView(APIView):
         serializer.save()
         return Response(serializer.data, status=200)
 
+    @extend_schema(
+        tags=["auth_staff"],
+        request=StaffProfileSerializer,
+        responses={200: StaffProfileSerializer},
+        description="Profile to‘liq update (PUT). Image qabul qilinmaydi."
+    )
+    def put(self, request):
+        if "image" in request.data:
+            return Response(
+                {"error": "Image update alohida endpoint orqali qilinadi."},
+                status=400
+            )
+
+        serializer = StaffProfileSerializer(
+            request.user,
+            data=request.data,
+            partial=False  # PUT = full update
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=200)
 
 class StaffProfileImageView(APIView):
     authentication_classes = [StaffJWTAuthentication]
@@ -100,7 +121,8 @@ class StaffLoginView(APIView):
         if not staff.check_password(password):
             return Response({"detail": "Email yoki parol xato."}, status=400)
 
-        if not staff.is_active:
+        email = EmailOTP.objects.get(email=email)
+        if email.state != 'VERIFIED':
             return Response({"detail": "Email tasdiqlanmagan (OTP verify qiling)."}, status=400)
 
         tokens = create_staff_tokens(staff)

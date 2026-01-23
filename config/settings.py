@@ -121,17 +121,35 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.AllowAny",
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+#    "SECURITY": [{"jwtAuth": []}]
 }
 
 
+#SPECTACULAR_SETTINGS = {
+ #   "TITLE": "TezXizmat API",
+  #  "DESCRIPTION": "Customer va Staff auth alohida",
+   # "VERSION": "1.0.0",
+
+    #    "SECURITY_SCHEMES": {
+     #   "customerBearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+      #  "staffBearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+   # },
+#}
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "TezXizmat API",
-    "DESCRIPTION": "Customer va Staff auth alohida",
     "VERSION": "1.0.0",
-
-        "SECURITY_SCHEMES": {
-        "customerBearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
-        "staffBearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SECURITY": [{"jwtAuth": []}],
+    "COMPONENT_SPLIT_REQUEST": True,
+    "COMPONENTS": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
+        }
     },
 }
 

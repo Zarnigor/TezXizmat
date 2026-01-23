@@ -1,27 +1,16 @@
-# staff/utils.py
 from rest_framework_simplejwt.tokens import RefreshToken
 
 def create_staff_tokens(staff):
-    """
-    Staff uchun JWT:
-      - role = "staff"
-      - staff_id = <id>
+    refresh = RefreshToken.for_user(staff)
 
-    Eslatma: access token bilan endpointlarga kirasiz,
-    shuning uchun role va staff_id access token ichida ham bo‘lishi shart.
-    """
-    refresh = RefreshToken()
-
-    # Refresh token claimlari
     refresh["role"] = "staff"
     refresh["staff_id"] = staff.id
 
-    # Access token claimlari (MUHIM)
-    access = refresh.access_token
-    access["role"] = "staff"
-    access["staff_id"] = staff.id
-
     return {
+        "id": staff.id,
+        "first_name": staff.first_name,
+        "last_name": staff.last_name,
+        "email": staff.email,
         "refresh": str(refresh),
-        "access": str(access),
+        "access": str(refresh.access_token),
     }
