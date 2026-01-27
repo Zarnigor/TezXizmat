@@ -19,7 +19,8 @@ from .serializers import (
 
 
 class CustomerDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+    serializer = ProfileSerializer
 
     def get(self, request, id):
         try:

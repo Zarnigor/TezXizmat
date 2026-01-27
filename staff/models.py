@@ -29,7 +29,7 @@ class Staff(AbstractBaseUser):
     image = models.ImageField(upload_to="staff/", blank=True, null=True)
     profession = models.CharField(max_length=255)
 
-    comments = models.TextField(blank=True)
+#    comments = models.TextField(blank=True)
     description = models.TextField(blank=True)
     skills = models.TextField()
 

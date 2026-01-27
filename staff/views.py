@@ -183,27 +183,30 @@ class StaffListView(ListAPIView):
         # Review modeli bor bo'lsa annotate ishlaydi:
         # from reviews.models import Review
         qs = qs.annotate(
-            avg_rating=Avg("review__stars"),
-            ratings_count=Count("review", distinct=True),
+            avg_rating=Avg("reviews__rating"),
+            ratings_count=Count("reviews", distinct=True),
         )
         return qs
 
+
+from django.db.models import Avg, Count, Q
+from rest_framework.generics import RetrieveAPIView
+from rest_framework.permissions import AllowAny
 
 class StaffDetailView(RetrieveAPIView):
     permission_classes = [AllowAny]
     serializer_class = StaffDetailSerializer
     queryset = Staff.objects.filter(is_active=True)
 
-    @extend_schema(tags=["staff"], responses={200: StaffDetailSerializer})
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
     def get_queryset(self):
-        qs = super().get_queryset()
-        return qs.annotate(
-            avg_rating=Avg("review__stars"),
-            ratings_count=Count("review", distinct=True),
-            reviews_text_count=Count("review", filter=Q(review__text__isnull=False) & ~Q(review__text=""), distinct=True),
+        return super().get_queryset().annotate(
+            avg_rating=Avg("reviews__rating"),
+            ratings_count=Count("reviews__id", distinct=True),
+            reviews_text_count=Count(
+                "reviews__id",
+                filter=Q(reviews__comment__isnull=False) & ~Q(reviews__comment=""),
+                distinct=True,
+            ),
         )
 
 

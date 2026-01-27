@@ -105,7 +105,7 @@ class StaffDetailSerializer(serializers.ModelSerializer):
         model = Staff
         fields = [
             "id", "first_name", "last_name", "email", "image",
-            "profession", "comments", "description", "skills", "price", "free_time",
+            "profession",  "description", "skills", "price", "free_time",
             "avg_rating", "ratings_count", "reviews_text_count",
         ]
 

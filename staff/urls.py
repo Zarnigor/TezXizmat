@@ -19,5 +19,5 @@ urlpatterns = [
     path("api/auth/staff/profile/", StaffProfileView.as_view()),
     path("api/auth/staff/profile/image/", StaffProfileImageView.as_view()),
 
-    path("api/auth/token/refresh/", TokenRefreshView.as_view())
+    path("api/auth/staff/token/refresh/", TokenRefreshView.as_view())
 ]

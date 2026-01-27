@@ -24,31 +24,38 @@ class OrderCreateView(generics.CreateAPIView):
 
 class CustomerOrdersView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsCustomer]
-    serializer_class = OrderListSerializer
+    serializer_class = OrderDetailSerializer
 
     def get_queryset(self):
-        customer = Customer.objects.get(user=self.request.user)
+        customer = self.request.user
         return Order.objects.filter(customer=customer).order_by("-created_at")
 
 
+from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
+from staff.authentication import StaffJWTAuthentication
+from .permissions import IsStaff  # sizda bor
+
 class StaffOrdersView(generics.ListAPIView):
+    authentication_classes = [StaffJWTAuthentication]
     permission_classes = [IsAuthenticated, IsStaff]
-    serializer_class = OrderListSerializer
+    serializer_class = OrderDetailSerializer
 
     def get_queryset(self):
-        staff = Staff.objects.get(user=self.request.user)
+        staff = self.request.user
         return Order.objects.filter(staff=staff).order_by("-created_at")
 
 
 class OrderAcceptView(generics.UpdateAPIView):
+    authentication_classes = [StaffJWTAuthentication]
     permission_classes = [IsAuthenticated, IsStaff]
-    queryset = Order.objects.select_related("customer__user", "staff__user")
+    queryset = Order.objects.select_related("customer", "staff")
     serializer_class = OrderActionSerializer
     http_method_names = ["put"]
 
     def update(self, request, *args, **kwargs):
         order = self.get_object()
-        staff = Staff.objects.get(user=request.user)
+        staff = request.user
 
         if order.staff_id != staff.id:
             raise PermissionDenied("Bu order sizga tegishli emas")
@@ -64,14 +71,15 @@ class OrderAcceptView(generics.UpdateAPIView):
 
 
 class OrderCompleteView(generics.UpdateAPIView):
+    authentication_classes = [StaffJWTAuthentication]
     permission_classes = [IsAuthenticated, IsStaff]
-    queryset = Order.objects.select_related("customer__user", "staff__user")
+    queryset = Order.objects.select_related("customer", "staff")
     serializer_class = OrderActionSerializer
     http_method_names = ["put"]
 
     def update(self, request, *args, **kwargs):
         order = self.get_object()
-        staff = Staff.objects.get(user=request.user)
+        staff = request.user
 
         if order.staff_id != staff.id:
             raise PermissionDenied("Bu order sizga tegishli emas")
@@ -87,8 +95,9 @@ class OrderCompleteView(generics.UpdateAPIView):
 
 
 class OrderCancelView(generics.UpdateAPIView):
+    authentication_classes = [StaffJWTAuthentication]
     permission_classes = [IsAuthenticated, IsOrderParticipant]
-    queryset = Order.objects.select_related("customer__user", "staff__user")
+    queryset = Order.objects.select_related("customer", "staff")
     serializer_class = OrderActionSerializer
     http_method_names = ["put"]
 
@@ -97,9 +106,9 @@ class OrderCancelView(generics.UpdateAPIView):
         user = request.user
 
         # 🧠 Kim cancel qilyapti?
-        if order.customer.user_id == user.id:
-            canceled_by = "customer"
-        elif order.staff.user_id == user.id:
+        #if order.customer.id == user.id:
+            #canceled_by = "customer"
+        if order.staff.id == user.id:
             canceled_by = "staff"
         else:
             # amalda bu holatga tushmaydi, permission sabab
@@ -114,17 +123,16 @@ class OrderCancelView(generics.UpdateAPIView):
 
         order.status = Order.Status.CANCELED
         order.canceled_at = timezone.now()
-        order.canceled_by = user
-        order.save(update_fields=["status", "canceled_at", "canceled_by", "updated_at"])
+        #order.canceled_by = user
+        order.save(update_fields=["status", "canceled_at", "updated_at"])
 
-        return Response({
-            **OrderDetailSerializer(order).data,
-            "canceled_by_role": canceled_by,
-        })
+        return Response({**OrderDetailSerializer(order).data})
 
 
-class OrderDetailView(generics.RetrieveAPIView):
+class OrderDetailView(generics.RetrieveAPIView): 
+    authentication_classes = [StaffJWTAuthentication]
     permission_classes = [IsAuthenticated, IsOrderParticipant]
     # http_method_names = ["put"]
     serializer_class = OrderDetailSerializer
     queryset = Order.objects.all()
+

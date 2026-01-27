@@ -1,19 +1,18 @@
 from rest_framework.permissions import BasePermission
+from customer.models import Customer
+from staff.models import Staff
+
 
 class IsCustomer(BasePermission):
     def has_permission(self, request, view):
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
+        return isinstance(request.user, Customer)
 
-        # variant A: token claim / user attribute
-        role = getattr(user, "role", None)
-        if role == "customer":
-            return True
 
-        # variant B: agar request.auth da token bo'lsa (SimpleJWT)
-        token = getattr(request, "auth", None)
-        if token and getattr(token, "get", None):
-            return token.get("role") == "customer"
+class IsStaff(BasePermission):
+    def has_permission(self, request, view):
+        return isinstance(request.user, Staff)
 
-        return False
+
+class IsOrderParticipant(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        return obj.customer == request.user or obj.staff == request.user
