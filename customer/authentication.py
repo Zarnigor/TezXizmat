@@ -1,17 +1,17 @@
+from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.exceptions import InvalidToken
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.exceptions import InvalidToken, AuthenticationFailed
 
-from .models import Staff
+Customer = get_user_model()
 
-
-class StaffJWTAuthentication(JWTAuthentication):
+class CustomerJWTAuthentication(JWTAuthentication):
     """
-    Muloyim:
-    - token yo‘q => None
-    - token user_type staff bo‘lmasa => None
-    - token invalid/expired => 401
+    DRF ketma-ket authenticatorlarda ishlatish uchun 'muloyim' behavior:
+    - header yo‘q => None (error emas)
+    - token boshqa user_type bo‘lsa => None (error emas)
+    - token buzilgan / expired => AuthenticationFailed (401)
     """
+
     def authenticate(self, request):
         header = self.get_header(request)
         if header is None:
@@ -26,19 +26,23 @@ class StaffJWTAuthentication(JWTAuthentication):
         except InvalidToken as e:
             raise AuthenticationFailed("Invalid or expired token") from e
 
-        if validated_token.get("user_type") != "staff":
+        if validated_token.get("user_type") != "customer":
             return None
 
+        user = self.get_user(validated_token)
+        return (user, validated_token)
+
+    def get_user(self, validated_token):
         user_id = validated_token.get("user_id")
         if not user_id:
             raise AuthenticationFailed("Token missing user_id")
 
         try:
-            user = Staff.objects.get(id=user_id)
-        except Staff.DoesNotExist as e:
+            user = Customer.objects.get(id=user_id)
+        except Customer.DoesNotExist as e:
             raise AuthenticationFailed("User not found") from e
 
         if not user.is_active:
             raise AuthenticationFailed("User inactive")
 
-        return (user, validated_token)
+        return user

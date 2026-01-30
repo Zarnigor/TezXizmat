@@ -1,41 +1,34 @@
 from django.db import models
-
+from django.utils import timezone
 
 class Order(models.Model):
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
         ACCEPTED = "ACCEPTED", "Accepted"
-        COMPLETED = "COMPLETED", "Completed"
+        STARTED = "STARTED", "Started"
+        COMPLETED_BY_STAFF = "COMPLETED_BY_STAFF", "Completed by staff"
+        COMPLETED_BY_CUSTOMER = "COMPLETED_BY_CUSTOMER", "Completed by customer"
         CANCELED = "CANCELED", "Canceled"
 
-    customer = models.ForeignKey(
-        "customer.Customer",
-        on_delete=models.CASCADE,
-        related_name="orders",
-    )
-    staff = models.ForeignKey(
-        "staff.Staff",
-        on_delete=models.CASCADE,
-        related_name="orders",
-    )
+    customer = models.ForeignKey("customer.Customer", on_delete=models.CASCADE, related_name="orders")
+    staff = models.ForeignKey("staff.Staff", on_delete=models.CASCADE, related_name="orders")
 
-    title = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
+    address = models.CharField(max_length=255)
+    problem_text = models.TextField()
 
-    address = models.CharField(max_length=500)
+    status = models.CharField(max_length=40, choices=Status.choices, default=Status.PENDING)
 
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.PENDING,
-    )
-
+    created_at = models.DateTimeField(default=timezone.now)
     accepted_at = models.DateTimeField(null=True, blank=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-    canceled_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_by_staff_at = models.DateTimeField(null=True, blank=True)
+    completed_by_customer_at = models.DateTimeField(null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    canceled_at = models.DateTimeField(null=True, blank=True)
+    canceled_by = models.CharField(max_length=10, blank=True)  # "customer" | "staff"
+    cancel_reason = models.CharField(max_length=255, blank=True)
+
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Order #{self.id} - {self.status}"
+        return f"Order #{self.id} {self.status}"

@@ -1,130 +1,230 @@
 from django.utils import timezone
-from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.shortcuts import get_object_or_404
 
-from customer.models import Customer
-from staff.models import Staff
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
+
+from drf_spectacular.utils import extend_schema, OpenApiResponse
+
+from customer.authentication import CustomerJWTAuthentication
+from staff.authentication import StaffJWTAuthentication
+from staff.models import Staff
+
 from .models import Order
 from .serializers import (
-    OrderCreateSerializer,
+    OrderCreateRequestSerializer,
+    OrderCancelRequestSerializer,
     OrderListSerializer,
-    OrderDetailSerializer, OrderActionSerializer,
+    OrderDetailSerializer,
+    MessageSerializer,
 )
-from .permissions import IsCustomer, IsStaff, IsOrderParticipant
-
-class OrderCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated, IsCustomer]
-    serializer_class = OrderCreateSerializer
-
-    def get_serializer_context(self):
-        return {"request": self.request}
+from .permissions import IsOrderParticipant
 
 
-class CustomerOrdersView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated, IsCustomer]
-    serializer_class = OrderListSerializer
+class OrderCreateView(APIView):
+    authentication_classes = [CustomerJWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        customer = Customer.objects.get(user=self.request.user)
-        return Order.objects.filter(customer=customer).order_by("-created_at")
+    @extend_schema(
+        tags=["orders"],
+        request=OrderCreateRequestSerializer,
+        responses={201: OrderDetailSerializer, 400: OpenApiResponse(description="Validation error")},
+        description="Customer yangi order yaratadi."
+    )
+    def post(self, request):
+        if request.user.__class__.__name__ != "Customer":
+            return Response({"detail": "Customer token required"}, status=403)
+
+        ser = OrderCreateRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        staff = get_object_or_404(Staff, id=ser.validated_data["staff_id"])
+
+        order = Order.objects.create(
+            customer=request.user,
+            staff=staff,
+            address=ser.validated_data["address"],
+            problem_text=ser.validated_data["problem_text"],
+        )
+        return Response(OrderDetailSerializer(order).data, status=201)
 
 
-class StaffOrdersView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated, IsStaff]
-    serializer_class = OrderListSerializer
+class CustomerOrdersView(APIView):
+    authentication_classes = [CustomerJWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        staff = Staff.objects.get(user=self.request.user)
-        return Order.objects.filter(staff=staff).order_by("-created_at")
+    @extend_schema(
+        tags=["orders"],
+        responses={200: OrderListSerializer(many=True)},
+        description="Customer o‘z orderlarini ko‘radi."
+    )
+    def get(self, request):
+        if request.user.__class__.__name__ != "Customer":
+            return Response({"detail": "Customer token required"}, status=403)
+
+        qs = Order.objects.filter(customer=request.user).order_by("-created_at")
+        return Response(OrderListSerializer(qs, many=True).data, status=200)
 
 
-class OrderAcceptView(generics.UpdateAPIView):
-    permission_classes = [IsAuthenticated, IsStaff]
-    queryset = Order.objects.select_related("customer__user", "staff__user")
-    serializer_class = OrderActionSerializer
-    http_method_names = ["put"]
+class StaffOrdersView(APIView):
+    authentication_classes = [StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    def update(self, request, *args, **kwargs):
-        order = self.get_object()
-        staff = Staff.objects.get(user=request.user)
+    @extend_schema(
+        tags=["orders"],
+        responses={200: OrderListSerializer(many=True)},
+        description="Staff o‘ziga biriktirilgan orderlarni ko‘radi."
+    )
+    def get(self, request):
+        if request.user.__class__.__name__ != "Staff":
+            return Response({"detail": "Staff token required"}, status=403)
 
-        if order.staff_id != staff.id:
-            raise PermissionDenied("Bu order sizga tegishli emas")
+        qs = Order.objects.filter(staff=request.user).order_by("-created_at")
+        return Response(OrderListSerializer(qs, many=True).data, status=200)
+
+
+class OrderDetailView(APIView):
+    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsOrderParticipant]
+
+    @extend_schema(
+        tags=["orders"],
+        responses={200: OrderDetailSerializer, 403: OpenApiResponse(description="Forbidden")},
+        description="Order detail (faqat participant)."
+    )
+    def get(self, request, id: int):
+        order = get_object_or_404(Order, id=id)
+        self.check_object_permissions(request, order)
+        return Response(OrderDetailSerializer(order).data, status=200)
+
+
+class OrderAcceptView(APIView):
+    authentication_classes = [StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsOrderParticipant]
+
+    @extend_schema(
+        tags=["orders"],
+        responses={200: OrderDetailSerializer, 400: OpenApiResponse(description="Invalid state")},
+        description="Staff orderni ACCEPTED ga o‘tkazadi."
+    )
+    def put(self, request, id: int):
+        if request.user.__class__.__name__ != "Staff":
+            return Response({"detail": "Staff token required"}, status=403)
+
+        order = get_object_or_404(Order, id=id)
+        self.check_object_permissions(request, order)
 
         if order.status != Order.Status.PENDING:
-            raise ValidationError("Order qabul qilib bo‘lmaydi")
+            return Response({"detail": "Order faqat PENDING bo‘lsa qabul qilinadi."}, status=400)
 
         order.status = Order.Status.ACCEPTED
         order.accepted_at = timezone.now()
         order.save(update_fields=["status", "accepted_at", "updated_at"])
-
         return Response(OrderDetailSerializer(order).data, status=200)
 
 
-class OrderCompleteView(generics.UpdateAPIView):
-    permission_classes = [IsAuthenticated, IsStaff]
-    queryset = Order.objects.select_related("customer__user", "staff__user")
-    serializer_class = OrderActionSerializer
-    http_method_names = ["put"]
+class OrderStartView(APIView):
+    authentication_classes = [StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsOrderParticipant]
 
-    def update(self, request, *args, **kwargs):
-        order = self.get_object()
-        staff = Staff.objects.get(user=request.user)
+    @extend_schema(
+        tags=["orders"],
+        responses={200: OrderDetailSerializer, 400: OpenApiResponse(description="Invalid state")},
+        description="Staff orderni STARTED ga o‘tkazadi."
+    )
+    def put(self, request, id: int):
+        if request.user.__class__.__name__ != "Staff":
+            return Response({"detail": "Staff token required"}, status=403)
 
-        if order.staff_id != staff.id:
-            raise PermissionDenied("Bu order sizga tegishli emas")
+        order = get_object_or_404(Order, id=id)
+        self.check_object_permissions(request, order)
 
         if order.status != Order.Status.ACCEPTED:
-            raise ValidationError("Order tugatib bo‘lmaydi")
+            return Response({"detail": "Order faqat ACCEPTED bo‘lsa START bo‘ladi."}, status=400)
 
-        order.status = Order.Status.COMPLETED
-        order.completed_at = timezone.now()
-        order.save(update_fields=["status", "completed_at", "updated_at"])
-
+        order.status = Order.Status.STARTED
+        order.started_at = timezone.now()
+        order.save(update_fields=["status", "started_at", "updated_at"])
         return Response(OrderDetailSerializer(order).data, status=200)
 
 
-class OrderCancelView(generics.UpdateAPIView):
+class OrderCompleteByStaffView(APIView):
+    authentication_classes = [StaffJWTAuthentication]
     permission_classes = [IsAuthenticated, IsOrderParticipant]
-    queryset = Order.objects.select_related("customer__user", "staff__user")
-    serializer_class = OrderActionSerializer
-    http_method_names = ["put"]
 
-    def update(self, request, *args, **kwargs):
-        order = self.get_object()  # permission shu yerda ishlaydi
-        user = request.user
+    @extend_schema(
+        tags=["orders"],
+        responses={200: OrderDetailSerializer, 400: OpenApiResponse(description="Invalid state")},
+        description="Staff orderni COMPLETED_BY_STAFF ga o‘tkazadi."
+    )
+    def put(self, request, id: int):
+        if request.user.__class__.__name__ != "Staff":
+            return Response({"detail": "Staff token required"}, status=403)
 
-        # 🧠 Kim cancel qilyapti?
-        if order.customer.user_id == user.id:
-            canceled_by = "customer"
-        elif order.staff.user_id == user.id:
-            canceled_by = "staff"
-        else:
-            # amalda bu holatga tushmaydi, permission sabab
-            raise PermissionDenied("Bu order sizga tegishli emas")
+        order = get_object_or_404(Order, id=id)
+        self.check_object_permissions(request, order)
 
-        # ❌ state tekshiruvlar
-        if order.status == Order.Status.COMPLETED:
-            raise ValidationError("Yakunlangan order bekor qilinmaydi")
+        if order.status != Order.Status.STARTED:
+            return Response({"detail": "Order faqat STARTED bo‘lsa staff tugata oladi."}, status=400)
 
-        if order.status == Order.Status.CANCELED:
-            raise ValidationError("Order allaqachon bekor qilingan")
+        order.status = Order.Status.COMPLETED_BY_STAFF
+        order.completed_by_staff_at = timezone.now()
+        order.save(update_fields=["status", "completed_by_staff_at", "updated_at"])
+        return Response(OrderDetailSerializer(order).data, status=200)
+
+
+class OrderCompleteByCustomerView(APIView):
+    authentication_classes = [CustomerJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsOrderParticipant]
+
+    @extend_schema(
+        tags=["orders"],
+        responses={200: OrderDetailSerializer, 400: OpenApiResponse(description="Invalid state")},
+        description="Customer orderni COMPLETED_BY_CUSTOMER ga o‘tkazadi (faqat staff tugatgandan keyin)."
+    )
+    def put(self, request, id: int):
+        if request.user.__class__.__name__ != "Customer":
+            return Response({"detail": "Customer token required"}, status=403)
+
+        order = get_object_or_404(Order, id=id)
+        self.check_object_permissions(request, order)
+
+        if order.status != Order.Status.COMPLETED_BY_STAFF:
+            return Response({"detail": "Order faqat COMPLETED_BY_STAFF bo‘lsa customer yakunlay oladi."}, status=400)
+
+        order.status = Order.Status.COMPLETED_BY_CUSTOMER
+        order.completed_by_customer_at = timezone.now()
+        order.save(update_fields=["status", "completed_by_customer_at", "updated_at"])
+        return Response(OrderDetailSerializer(order).data, status=200)
+
+
+class OrderCancelView(APIView):
+    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsOrderParticipant]
+
+    @extend_schema(
+        tags=["orders"],
+        request=OrderCancelRequestSerializer,
+        responses={200: OrderDetailSerializer, 400: OpenApiResponse(description="Invalid state")},
+        description="Orderni bekor qilish (customer yoki staff)."
+    )
+    def put(self, request, id: int):
+        order = get_object_or_404(Order, id=id)
+        self.check_object_permissions(request, order)
+
+        # Cancel qoidasi: ikkalasi ham, lekin yakunlangan bo‘lsa bekor bo‘lmaydi
+        if order.status in (Order.Status.COMPLETED_BY_STAFF, Order.Status.COMPLETED_BY_CUSTOMER, Order.Status.CANCELED):
+            return Response({"detail": "Bu holatda cancel qilib bo‘lmaydi."}, status=400)
+
+        ser = OrderCancelRequestSerializer(data=request.data or {})
+        ser.is_valid(raise_exception=True)
 
         order.status = Order.Status.CANCELED
         order.canceled_at = timezone.now()
-        order.canceled_by = user
-        order.save(update_fields=["status", "canceled_at", "canceled_by", "updated_at"])
+        order.cancel_reason = ser.validated_data.get("reason", "") or ""
+        order.canceled_by = "customer" if request.user.__class__.__name__ == "Customer" else "staff"
+        order.save(update_fields=["status", "canceled_at", "cancel_reason", "canceled_by", "updated_at"])
 
-        return Response({
-            **OrderDetailSerializer(order).data,
-            "canceled_by_role": canceled_by,
-        })
-
-
-class OrderDetailView(generics.RetrieveAPIView):
-    permission_classes = [IsAuthenticated, IsOrderParticipant]
-    # http_method_names = ["put"]
-    serializer_class = OrderDetailSerializer
-    queryset = Order.objects.all()
+        return Response(OrderDetailSerializer(order).data, status=200)

@@ -5,16 +5,21 @@ from .views import (
     StaffOrdersView,
     OrderDetailView,
     OrderAcceptView,
-    OrderCompleteView,
+    OrderStartView,
+    OrderCompleteByStaffView,
+    OrderCompleteByCustomerView,
     OrderCancelView,
 )
 
 urlpatterns = [
-    path("create/", OrderCreateView.as_view()),
-    path("customer-orders/", CustomerOrdersView.as_view()),
-    path("staff-orders/", StaffOrdersView.as_view()),
-    path("<int:pk>/", OrderDetailView.as_view()),
-    path("<int:pk>/accept/", OrderAcceptView.as_view()),
-    path("<int:pk>/complete/", OrderCompleteView.as_view()),
-    path("<int:pk>/cancel/", OrderCancelView.as_view()),
+    path("orders/", OrderCreateView.as_view()),
+    path("orders/customer/", CustomerOrdersView.as_view()),
+    path("orders/staff/", StaffOrdersView.as_view()),
+    path("orders/<int:id>/", OrderDetailView.as_view()),
+
+    path("orders/<int:id>/accept/", OrderAcceptView.as_view()),
+    path("orders/<int:id>/start/", OrderStartView.as_view()),
+    path("orders/<int:id>/complete-by-staff/", OrderCompleteByStaffView.as_view()),
+    path("orders/<int:id>/confirm-completion/", OrderCompleteByCustomerView.as_view()),
+    path("orders/<int:id>/cancel/", OrderCancelView.as_view()),
 ]

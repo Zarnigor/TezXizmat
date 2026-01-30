@@ -14,7 +14,8 @@ urlpatterns = [
 
     path('api/auth/', include('email_otp.urls')),
     path('api/auth/customer/', include('customer.urls')),
-    path('', include('staff.urls')),
+    path("api/auth/staff/", include("staff.urls_auth")),
+    path("api/", include("staff.urls_public")),
     path("api/orders/", include("orders.urls")),
     path("api/reviews/", include("reviews.urls")),
 ]

@@ -1,47 +1,45 @@
-from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, Group, Permission
+from django.utils import timezone
 
+from .managers import StaffManager
 
-class StaffManager(BaseUserManager):
-    def create_user(self, email, password=None, **extra_fields):
-        if not email:
-            raise ValueError("Email majburiy")
+class Staff(AbstractBaseUser, PermissionsMixin):
+    first_name = models.CharField(max_length=80)
+    last_name = models.CharField(max_length=80)
+    email = models.EmailField(unique=True, db_index=True)
+    image = models.ImageField(upload_to="staff/", null=True, blank=True)
 
-        email = self.normalize_email(email)
-        user = self.model(email=email, **extra_fields)
-        user.set_password(password)
-        user.save(using=self._db)
-        return user
-
-    def create_superuser(self, email, password=None, **extra_fields):
-        extra_fields.setdefault("is_staff", True)
-        extra_fields.setdefault("is_superuser", True)
-        extra_fields.setdefault("is_active", True)
-
-        return self.create_user(email, password, **extra_fields)
-
-
-class Staff(AbstractBaseUser):
-    email = models.EmailField(unique=True)
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-
-    image = models.ImageField(upload_to="staff/", blank=True, null=True)
-    profession = models.CharField(max_length=255)
-
-    comments = models.TextField(blank=True)
+    profession = models.CharField(max_length=120)
     description = models.TextField(blank=True)
-    skills = models.TextField()
+    skills_text = models.TextField(blank=True)
+    price_text = models.CharField(max_length=200, blank=True)
+    free_time_text = models.CharField(max_length=200, blank=True)
 
-    price = models.CharField(max_length=100)
-    free_time = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)
+    is_email_verified = models.BooleanField(default=False)
 
-    is_active = models.BooleanField(default=False)
-    is_staff = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # ✅ FIX: unique related_name
+    groups = models.ManyToManyField(
+        Group,
+        blank=True,
+        related_name="staff_set",
+        related_query_name="staff",
+    )
+    user_permissions = models.ManyToManyField(
+        Permission,
+        blank=True,
+        related_name="staff_permission_set",
+        related_query_name="staff",
+    )
 
     objects = StaffManager()
 
     USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["first_name", "last_name", "profession"]
 
     def __str__(self):
         return self.email

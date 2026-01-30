@@ -1,111 +1,202 @@
-import re
+from django.db import transaction
 from rest_framework import serializers
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from .models import Staff
-from .utils import create_staff_tokens
+from .validators import validate_password_policy
 
 
-def validate_password_rule(password: str) -> str:
-    if len(password) < 8:
-        raise serializers.ValidationError("Parol kamida 8 ta belgidan iborat bo‘lsin.")
-    if not re.search(r"[A-Za-z]", password):
-        raise serializers.ValidationError("Parolda kamida 1 ta harf bo‘lishi kerak.")
-    if not re.search(r"\d", password):
-        raise serializers.ValidationError("Parolda kamida 1 ta raqam bo‘lishi kerak.")
-    return password
+def _norm_email(email: str) -> str:
+    return (email or "").strip().lower()
 
 
-class LoginSerializer(serializers.Serializer):
+def _email_verified_by_otp(email: str, purpose: str) -> bool:
+    try:
+        from email_otp.services import is_email_verified  # type: ignore
+        from email_otp.models import EmailOTP  # type: ignore
+    except Exception:
+        raise serializers.ValidationError(
+            {"detail": "email_otp app/service topilmadi. (email_otp.services.is_email_verified)"}
+        )
+
+    return is_email_verified(email=_norm_email(email), purpose=purpose, actor=EmailOTP.ACTOR_STAFF)
+
+
+def _email_exists_in_customer(email: str) -> bool:
+    try:
+        from customer.models import Customer  # type: ignore
+        return Customer.objects.filter(email=_norm_email(email)).exists()
+    except Exception:
+        return False
+
+
+class StaffRegisterRequestSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=80)
+    last_name = serializers.CharField(max_length=80)
+    profession = serializers.CharField(max_length=120)
+
+    description = serializers.CharField(required=False, allow_blank=True)
+    skills_text = serializers.CharField(required=False, allow_blank=True)
+    price_text = serializers.CharField(required=False, allow_blank=True)
+    free_time_text = serializers.CharField(required=False, allow_blank=True)
+
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
 
-
-class LoginResponseSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-    email = serializers.EmailField()
-    refresh = serializers.CharField()
-    access = serializers.CharField()
-
-class StaffRegisterSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    first_name = serializers.CharField(max_length=100)
-    last_name = serializers.CharField(max_length=100)
-
-    password = serializers.CharField(write_only=True)
-    password2 = serializers.CharField(write_only=True)
-
-    def validate_password(self, value):
-        return validate_password_rule(value)
+    def validate_email(self, v):
+        return _norm_email(v)
 
     def validate(self, attrs):
-        if attrs["password"] != attrs["password2"]:
-            raise serializers.ValidationError({"password2": "Parollar mos emas."})
+        if attrs["password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({"confirm_password": "Parollar mos emas."})
+
+        validate_password_policy(attrs["password"])
+
+        email = attrs["email"]
+
+        # Email registerdan oldin OTP VERIFY bo‘lishi shart
+        if not _email_verified_by_otp(email=email, purpose="VERIFY"):
+            raise serializers.ValidationError({"email": "Email avval OTP orqali tasdiqlanishi kerak (VERIFY)."})
+
+        # Global unique: Staff + Customer
+        if Staff.objects.filter(email=email).exists():
+            raise serializers.ValidationError({"email": "Bu email allaqachon staff sifatida ro‘yxatdan o‘tgan."})
+        if _email_exists_in_customer(email):
+            raise serializers.ValidationError({"email": "Bu email customer akkauntida band."})
+
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
-        validated_data.pop("password2")
-        password = validated_data.pop("password")
-        staff = Staff.objects.create_user(password=password, **validated_data)
-        return staff
+        user = Staff.objects.create_user(
+            email=validated_data["email"],
+            password=validated_data["password"],
+            first_name=validated_data["first_name"].strip(),
+            last_name=validated_data["last_name"].strip(),
+            profession=validated_data["profession"].strip(),
+            description=(validated_data.get("description") or "").strip(),
+            skills_text=(validated_data.get("skills_text") or "").strip(),
+            price_text=(validated_data.get("price_text") or "").strip(),
+            free_time_text=(validated_data.get("free_time_text") or "").strip(),
+            is_email_verified=True,
+        )
+        return user
 
 
 class StaffProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Staff
-        # image YO'Q
-        fields = [
-            "id", "email", "first_name", "last_name",
-            "profession", "comments", "description", "skills",
-            "price", "free_time",
-            "is_active",
-        ]
-        read_only_fields = ["id", "email", "is_active"]
+        fields = (
+            "id",
+            "first_name",
+            "last_name",
+            "email",
+            "image",
+            "profession",
+            "description",
+            "skills_text",
+            "price_text",
+            "free_time_text",
+            "is_email_verified",
+            "created_at",
+        )
 
 
-class StaffImageSerializer(serializers.ModelSerializer):
+class StaffPublicListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Staff
-        fields = ["image"]
+        fields = ("id", "first_name", "last_name", "image", "profession", "price_text")
 
 
-class StaffResetPasswordSerializer(serializers.Serializer):
+from rest_framework import serializers
+from .models import Staff
+
+class StaffPublicDetailSerializer(serializers.ModelSerializer):
+    avg_star = serializers.FloatField(read_only=True)
+    ratings_count = serializers.IntegerField(read_only=True)
+    text_reviews_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Staff
+        fields = (
+            "id",
+            "first_name",
+            "last_name",
+            "image",
+            "profession",
+            "description",
+            "skills_text",
+            "price_text",
+            "free_time_text",
+            "avg_star",
+            "ratings_count",
+            "text_reviews_count",
+        )
+
+
+
+class StaffLoginRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
-    password2 = serializers.CharField(write_only=True)
 
-    def validate_password(self, value):
-        return validate_password_rule(value)
+    def validate_email(self, v):
+        return _norm_email(v)
+
+
+class StaffLoginResponseSerializer(serializers.Serializer):
+    access = serializers.CharField()
+    refresh = serializers.CharField()
+    token_type = serializers.CharField()
+    user = StaffProfileSerializer()
+
+
+class StaffLogoutRequestSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+    def save(self, **kwargs):
+        RefreshToken(self.validated_data["refresh"]).blacklist()
+
+
+class StaffProfileUpdateRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Staff
+        fields = ("first_name", "last_name", "profession", "description", "skills_text", "price_text", "free_time_text")
+
+    def validate_first_name(self, v): return v.strip()
+    def validate_last_name(self, v): return v.strip()
+    def validate_profession(self, v): return v.strip()
+
+
+class StaffImageUpdateRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Staff
+        fields = ("image",)
+
+
+class StaffResetPasswordRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate_email(self, v):
+        return _norm_email(v)
 
     def validate(self, attrs):
-        if attrs["password"] != attrs["password2"]:
-            raise serializers.ValidationError({"password2": "Parollar mos emas."})
+        if attrs["password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({"confirm_password": "Parollar mos emas."})
+        validate_password_policy(attrs["password"])
+
+        email = attrs["email"]
+        if not _email_verified_by_otp(email=email, purpose="RESET"):
+            raise serializers.ValidationError({"detail": "Avval RESET OTP tasdiqlanishi kerak."})
+
         return attrs
 
-# Public list item
-class StaffListSerializer(serializers.ModelSerializer):
-    avg_rating = serializers.FloatField(read_only=True)
-    ratings_count = serializers.IntegerField(read_only=True)
 
-    class Meta:
-        model = Staff
-        fields = ["id", "first_name", "last_name", "image", "profession", "price", "free_time", "avg_rating", "ratings_count"]
+class MessageSerializer(serializers.Serializer):
+    message = serializers.CharField()
 
 
-class MessageSerializer:
-    pass
-
-
-class StaffDetailSerializer(serializers.ModelSerializer):
-    avg_rating = serializers.FloatField(read_only=True)
-    ratings_count = serializers.IntegerField(read_only=True)
-    reviews_text_count = serializers.IntegerField(read_only=True)
-
-    class Meta:
-        model = Staff
-        fields = [
-            "id", "first_name", "last_name", "email", "image",
-            "profession", "comments", "description", "skills", "price", "free_time",
-            "avg_rating", "ratings_count", "reviews_text_count",
-        ]
-
+class StaffTokenRefreshResponseSerializer(serializers.Serializer):
+    access = serializers.CharField()

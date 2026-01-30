@@ -1,74 +1,37 @@
 from rest_framework import serializers
 from .models import Order
-from customer.models import Customer
-from staff.models import Staff
 
+class OrderCreateRequestSerializer(serializers.Serializer):
+    staff_id = serializers.IntegerField()
+    address = serializers.CharField(max_length=255)
+    problem_text = serializers.CharField()
 
-class OrderActionSerializer(serializers.Serializer):
-    """
-    Accept / Cancel / Complete uchun
-    request body BO‘SH bo‘ladi
-    """
-    pass
-
-class OrderCreateSerializer(serializers.ModelSerializer):
-    staff_id = serializers.IntegerField(write_only=True)
-
-    class Meta:
-        model = Order
-        fields = (
-            "id",
-            "staff_id",
-            "title",
-            "description",
-            "address",
-        )
-
-    def validate_staff_id(self, value):
-        if not Staff.objects.filter(id=value).exists():
-            raise serializers.ValidationError("Staff topilmadi")
-        return value
-
-    def create(self, validated_data):
-        request = self.context["request"]
-        customer = Customer.objects.get(user=request.user)
-        staff_id = validated_data.pop("staff_id")
-
-        return Order.objects.create(
-            customer=customer,
-            staff_id=staff_id,
-            **validated_data
-        )
-
+class OrderCancelRequestSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
 
 class OrderListSerializer(serializers.ModelSerializer):
-    staff_name = serializers.CharField(
-        source="staff.user.get_full_name",
-        read_only=True
-    )
+    class Meta:
+        model = Order
+        fields = (
+            "id", "status", "address", "problem_text",
+            "customer_id", "staff_id",
+            "created_at", "accepted_at", "started_at",
+            "completed_by_staff_at", "completed_by_customer_at",
+            "canceled_at", "canceled_by",
+        )
 
+class OrderDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = (
             "id",
-            "title",
-            "address",
+            "customer_id", "staff_id",
+            "address", "problem_text",
             "status",
-            "staff_name",
-            "created_at",
+            "created_at", "accepted_at", "started_at",
+            "completed_by_staff_at", "completed_by_customer_at",
+            "canceled_at", "canceled_by", "cancel_reason",
         )
 
-
-class OrderDetailSerializer(serializers.ModelSerializer):
-    customer_name = serializers.CharField(
-        source="customer.user.get_full_name",
-        read_only=True
-    )
-    staff_name = serializers.CharField(
-        source="staff.user.get_full_name",
-        read_only=True
-    )
-
-    class Meta:
-        model = Order
-        fields = "__all__"
+class MessageSerializer(serializers.Serializer):
+    message = serializers.CharField()

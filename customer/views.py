@@ -1,194 +1,237 @@
-from drf_spectacular.utils import extend_schema, OpenApiResponse
-from email_otp.models import EmailOTP
+from drf_spectacular.utils import OpenApiResponse
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.generics import GenericAPIView
-from rest_framework.permissions import AllowAny
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.views import TokenRefreshView
 
+from .authentication import CustomerJWTAuthentication
 from .models import Customer
+from .permissions import IsCustomer
 from .serializers import (
-    RegisterSerializer,
-    ResetPasswordSerializer,
-    ProfileSerializer,
-    EmptySerializer,
+    CustomerRegisterRequestSerializer,
+    CustomerProfileSerializer,
+    CustomerLoginRequestSerializer,
+    CustomerLoginResponseSerializer,
+    CustomerLogoutRequestSerializer,
+    CustomerProfileUpdateRequestSerializer,
+    CustomerImageUpdateRequestSerializer,
+    CustomerResetPasswordRequestSerializer,
+    CustomerMiniSerializer,
     MessageSerializer,
-    LoginSerializer, LoginResponseSerializer,
 )
+from .serializers import CustomerTokenRefreshResponseSerializer
+from .tokens import CustomerTokenObtainPairSerializer
 
 
-class CustomerDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, id):
-        try:
-            customer = Customer.objects.get(id=id)
-        except Customer.DoesNotExist:
-            return Response(
-                {"detail": "Customer topilmadi"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = ProfileSerializer(customer)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-@extend_schema(
-    request=RegisterSerializer,
-    responses={201: OpenApiResponse(description="Account yaratildi")}
-)
-class RegisterView(APIView):
+class CustomerRegisterView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
+    @extend_schema(
+        tags=["auth_customer"],
+        request=CustomerRegisterRequestSerializer,
+        responses={201: CustomerProfileSerializer, 400: OpenApiResponse(description="Validation error")},
+        description="Customer register. Email OTP VERIFY oldindan verified bo‘lishi shart."
+    )
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-
-        verified_otp = EmailOTP.objects.filter(
-            email=data['email'],
-            state="VERIFIED"
-        ).last()
-
-        if not verified_otp:
-            return Response(
-                {"error": "Email tasdiqlanmagan"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if Customer.objects.filter(email=data['email']).exists():
-            return Response(
-                {"error": "Bu email allaqachon ro‘yxatdan o‘tgan"},
-                status=400
-            )
-
-        Customer.objects.create_user(
-            email=data['email'],
-            password=data['password'],
-            first_name=data['first_name'],
-            last_name=data['last_name'],
-            is_active=True
-        )
-
-        verified_otp.delete()
-
-        return Response({"detail": "Ro‘yxatdan o‘tildi"}, status=201)
+        ser = CustomerRegisterRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        user = ser.save()
+        return Response(CustomerProfileSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
-class LoginAPIView(APIView):
+class CustomerLoginView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     @extend_schema(
-        request=LoginSerializer,
-        responses={200: LoginResponseSerializer}
+        tags=["auth_customer"],
+        request=CustomerLoginRequestSerializer,
+        responses={200: CustomerLoginResponseSerializer, 400: OpenApiResponse(description="Invalid credentials")},
+        description="Customer login. Access & refresh token qaytaradi."
     )
     def post(self, request):
-        serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        ser = CustomerLoginRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
 
-
-class LogoutView(GenericAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = EmptySerializer
-
-    @extend_schema(
-        responses={200: MessageSerializer}
-    )
-    def post(self, request):
-        return Response({"detail": "Logout muvaffaqiyatli"}, status=200)
-
-class ProfileView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        responses={200: ProfileSerializer}
-    )
-    def get(self, request):
-        serializer = ProfileSerializer(request.user)
-        return Response(serializer.data)
-
-    @extend_schema(
-        request=ProfileSerializer,
-        responses={200: OpenApiResponse(description="Profile updated successfully")}
-    )
-    def put(self, request):
-        serializer = ProfileSerializer(data=request.data, instance=request.user, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-class ProfileUpdateView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        request=ProfileSerializer,
-        responses={200: ProfileSerializer}
-    )
-    def put(self, request):
-        serializer = ProfileSerializer(
-            request.user, data=request.data
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-    @extend_schema(
-        request=ProfileSerializer,
-        responses={200: ProfileSerializer}
-    )
-    def patch(self, request):
-        serializer = ProfileSerializer(
-            request.user, data=request.data, partial=True
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-
-class ResetPasswordView(GenericAPIView):
-    permission_classes = [AllowAny]
-    serializer_class = ResetPasswordSerializer
-
-    @extend_schema(
-        request=ResetPasswordSerializer,
-        responses={200: MessageSerializer}
-    )
-    def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        email = serializer.validated_data["email"]
-
-        otp = EmailOTP.objects.filter(
-            email=email,
-            purpose=EmailOTP.PURPOSE_RESET,
-            state=EmailOTP.STATE_VERIFIED
-        ).last()
-
-        if not otp:
-            return Response(
-                {"error": "Avval emailga yuborilgan kodni tasdiqlang"},
-                status=400
-            )
+        email = ser.validated_data["email"]
+        password = ser.validated_data["password"]
 
         try:
             user = Customer.objects.get(email=email)
         except Customer.DoesNotExist:
-            return Response(
-                {"error": "Foydalanuvchi topilmadi"},
-                status=404
-            )
+            return Response({"detail": "Email yoki parol xato."}, status=400)
 
-        user.set_password(serializer.validated_data["password"])
-        user.save(update_fields=["password"])
+        if not user.is_active:
+            return Response({"detail": "Account aktiv emas."}, status=400)
 
-        otp.state = EmailOTP.STATE_USED
-        otp.save(update_fields=["state"])
+        if not user.is_email_verified:
+            return Response({"detail": "Email tasdiqlanmagan."}, status=400)
 
-        return Response(
-            {"message": "Parol muvaffaqiyatli yangilandi"},
-            status=200
-        )
+        if not user.check_password(password):
+            return Response({"detail": "Email yoki parol xato."}, status=400)
 
+        token = CustomerTokenObtainPairSerializer.get_token(user)
+        data = {
+            "access": str(token.access_token),
+            "refresh": str(token),
+            "token_type": "Bearer",
+            "user": CustomerProfileSerializer(user).data
+        }
+        return Response(data, status=200)
+
+
+class CustomerLogoutView(APIView):
+    authentication_classes = [CustomerJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    @extend_schema(
+        tags=["auth_customer"],
+        request=CustomerLogoutRequestSerializer,
+        responses={200: MessageSerializer},
+        description="Customer logout. Refresh token blacklist qilinadi."
+    )
+    def post(self, request):
+        ser = CustomerLogoutRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response({"message": "Logged out"}, status=200)
+
+
+class CustomerTokenRefreshView(TokenRefreshView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        tags=["auth_customer"],
+        request=TokenRefreshSerializer,
+        responses={200: CustomerTokenRefreshResponseSerializer},
+        description="Customer token refresh (refresh -> new access)."
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+
+
+class CustomerProfileView(APIView):
+    authentication_classes = [CustomerJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    @extend_schema(
+        tags=["auth_customer"],
+        responses={200: CustomerProfileSerializer},
+        description="Customer o‘z profilini ko‘radi."
+    )
+    def get(self, request):
+        return Response(CustomerProfileSerializer(request.user).data, status=200)
+
+    @extend_schema(
+        tags=["auth_customer"],
+        request=CustomerProfileUpdateRequestSerializer,
+        responses={200: CustomerProfileSerializer},
+        description="Customer profilini to‘liq update qiladi."
+    )
+    def put(self, request):
+        ser = CustomerProfileUpdateRequestSerializer(request.user, data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(CustomerProfileSerializer(request.user).data, status=200)
+
+    @extend_schema(
+        tags=["auth_customer"],
+        request=CustomerProfileUpdateRequestSerializer,
+        responses={200: CustomerProfileSerializer},
+        description="Customer profilini qisman update qiladi."
+    )
+    def patch(self, request):
+        ser = CustomerProfileUpdateRequestSerializer(request.user, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(CustomerProfileSerializer(request.user).data, status=200)
+
+
+class CustomerProfileImageView(APIView):
+    authentication_classes = [CustomerJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    @extend_schema(
+        tags=["auth_customer"],
+        request=CustomerImageUpdateRequestSerializer,
+        responses={200: CustomerMiniSerializer},
+        description="Customer rasmni alohida update qiladi (multipart/form-data)."
+    )
+    def put(self, request):
+        ser = CustomerImageUpdateRequestSerializer(request.user, data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(CustomerMiniSerializer(request.user).data, status=200)
+
+
+class CustomerResetPasswordView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        tags=["auth_customer"],
+        request=CustomerResetPasswordRequestSerializer,
+        responses={200: MessageSerializer, 400: OpenApiResponse(description="Validation error")},
+        description="Customer reset password. RESET OTP verified bo‘lishi shart."
+    )
+    def post(self, request):
+        ser = CustomerResetPasswordRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        email = ser.validated_data["email"]
+        password = ser.validated_data["password"]
+
+        user = Customer.objects.filter(email=email).first()
+        if not user:
+            return Response({"detail": "Customer topilmadi."}, status=400)
+
+        if not user.is_email_verified:
+            return Response({"detail": "Email tasdiqlanmagan."}, status=400)
+
+        user.set_password(password)
+        user.save(update_fields=["password", "updated_at"])
+        return Response({"message": "Password updated successfully"}, status=200)
+
+#
+# class CustomerDetailView(APIView):
+#     """
+#     GET /api/customer/<id>/
+#     - Customer token bo‘lsa: faqat o‘zini ko‘ra oladi
+#     - Staff token bo‘lsa: faqat order orqali bog‘langan bo‘lsa ko‘ra oladi (staff app + orders app bo‘lganda)
+#     """
+#     authentication_classes = [CustomerJWTAuthentication, get_staff_authentication()]
+#     permission_classes = [IsAuthenticated]
+#
+#     @extend_schema(
+#         tags=["customers"],
+#         responses={200: CustomerMiniSerializer, 403: OpenApiResponse(description="Forbidden")},
+#         description="Customer mini detail (first_name, last_name, image). Self yoki order-participant staff."
+#     )
+#     def get(self, request, id: int):
+#         target = get_object_or_404(Customer, id=id)
+#
+#         # 1) Customer o‘zi
+#         if request.user.__class__.__name__ == "Customer":
+#             if request.user.id != target.id:
+#                 return Response({"detail": "Forbidden"}, status=403)
+#             return Response(CustomerMiniSerializer(target).data, status=200)
+#
+#         # 2) Staff bo‘lsa: order orqali bog‘langanmi?
+#         if request.user.__class__.__name__ == "Staff":
+#             try:
+#                 from orders.models import Order  # type: ignore
+#             except Exception:
+#                 return Response({"detail": "Orders app not configured yet."}, status=500)
+#
+#             ok = Order.objects.filter(customer_id=target.id, staff_id=request.user.id).exists()
+#             if not ok:
+#                 return Response({"detail": "Forbidden"}, status=403)
+#             return Response(CustomerMiniSerializer(target).data, status=200)
+#
+#         return Response({"detail": "Forbidden"}, status=403)

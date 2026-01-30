@@ -1,236 +1,268 @@
-from django.db.models import Avg, Count, Q
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
-
-from rest_framework import status
-from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
+from rest_framework import status, generics
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
 
-from email_otp.models import EmailOTP
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
+
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from django.db import models
+
+from .models import Staff
 from .authentication import StaffJWTAuthentication
-from .permissions import IsStaffUser
-from .serializers import *
-from .tokens import create_staff_tokens
-from .serializers import LoginResponseSerializer, LoginSerializer
+from .permissions import IsStaff
+from .serializers import (
+    StaffRegisterRequestSerializer,
+    StaffProfileSerializer,
+    StaffLoginRequestSerializer,
+    StaffLoginResponseSerializer,
+    StaffLogoutRequestSerializer,
+    StaffProfileUpdateRequestSerializer,
+    StaffImageUpdateRequestSerializer,
+    StaffResetPasswordRequestSerializer,
+    StaffPublicListSerializer,
+    StaffPublicDetailSerializer,
+    MessageSerializer, StaffTokenRefreshResponseSerializer,
+)
+from .tokens import StaffTokenObtainPairSerializer
+from django.db.models import Avg, Count, Q
+from rest_framework import generics
+from rest_framework.permissions import AllowAny
+from drf_spectacular.utils import extend_schema
 
+from .models import Staff
 
 class StaffRegisterView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     @extend_schema(
         tags=["auth_staff"],
-        request=StaffRegisterSerializer,
-        responses={201: StaffProfileSerializer},
-        description=""
+        request=StaffRegisterRequestSerializer,
+        responses={201: StaffProfileSerializer, 400: OpenApiResponse(description="Validation error")},
+        description="Staff register. Email OTP VERIFY oldindan verified bo‘lishi shart."
     )
     def post(self, request):
-        serializer = StaffRegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        staff = serializer.save()
-        return Response(StaffProfileSerializer(staff).data, status=status.HTTP_201_CREATED)
-
-
-class StaffProfileView(APIView):
-    authentication_classes = [StaffJWTAuthentication]
-    permission_classes = [IsStaffUser]
-
-    @extend_schema(tags=["auth_staff"], responses={200: StaffProfileSerializer})
-    def get(self, request):
-        return Response(StaffProfileSerializer(request.user).data)
-
-    @extend_schema(
-        tags=["auth_staff"],
-        request=StaffProfileSerializer,
-        responses={200: StaffProfileSerializer},
-        description="Profile update (image qabul qilinmaydi). Image uchun alohida endpoint bor."
-    )
-    def patch(self, request):
-        if "image" in request.data:
-            return Response({"error": "Image update alohida endpoint orqali qilinadi."}, status=400)
-
-        serializer = StaffProfileSerializer(request.user, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=200)
-
-
-class StaffProfileImageView(APIView):
-    authentication_classes = [StaffJWTAuthentication]
-    permission_classes = [IsStaffUser]
-
-    @extend_schema(
-        tags=["auth_staff"],
-        request=StaffImageSerializer,
-        responses={200: StaffImageSerializer},
-        description="Staff rasmni alohida update qiladi (multipart/form-data, image field)."
-    )
-    def put(self, request):
-        serializer = StaffImageSerializer(request.user, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=200)
+        ser = StaffRegisterRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        user = ser.save()
+        return Response(StaffProfileSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
 class StaffLoginView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     @extend_schema(
         tags=["auth_staff"],
-        request=LoginSerializer,
-        responses={
-            200: LoginResponseSerializer,
-            400: OpenApiResponse(description="Invalid credentials / inactive"),
-        },
-        description="Staff login. is_active=True bo‘lishi shart (OTP verify qilingan)."
+        request=StaffLoginRequestSerializer,
+        responses={200: StaffLoginResponseSerializer, 400: OpenApiResponse(description="Invalid credentials")},
+        description="Staff login. Access & refresh token qaytaradi."
     )
     def post(self, request):
-        serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        ser = StaffLoginRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
 
-        email = serializer.validated_data["email"]
-        password = serializer.validated_data["password"]
+        email = ser.validated_data["email"]
+        password = ser.validated_data["password"]
 
-        try:
-            staff = Staff.objects.get(email=email)
-        except Staff.DoesNotExist:
+        user = Staff.objects.filter(email=email).first()
+        if not user:
             return Response({"detail": "Email yoki parol xato."}, status=400)
 
-        if not staff.check_password(password):
+        if not user.is_active:
+            return Response({"detail": "Account aktiv emas."}, status=400)
+
+        if not user.is_email_verified:
+            return Response({"detail": "Email tasdiqlanmagan."}, status=400)
+
+        if not user.check_password(password):
             return Response({"detail": "Email yoki parol xato."}, status=400)
 
-        if not staff.is_active:
-            return Response({"detail": "Email tasdiqlanmagan (OTP verify qiling)."}, status=400)
-
-        tokens = create_staff_tokens(staff)
-        return Response(tokens, status=200)
+        token = StaffTokenObtainPairSerializer.get_token(user)
+        data = {
+            "access": str(token.access_token),
+            "refresh": str(token),
+            "token_type": "Bearer",
+            "user": StaffProfileSerializer(user).data,
+        }
+        return Response(data, status=200)
 
 
 class StaffLogoutView(APIView):
     authentication_classes = [StaffJWTAuthentication]
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsAuthenticated, IsStaff]
 
     @extend_schema(
         tags=["auth_staff"],
-        request=None,
-        responses={200: OpenApiResponse(description="Logged out")},
-        description="Refresh tokenni blacklist qiladi. Body: {refresh: <token>}"
+        request=StaffLogoutRequestSerializer,
+        responses={200: MessageSerializer},
+        description="Staff logout. Refresh token blacklist qilinadi."
     )
     def post(self, request):
-        refresh_token = request.data.get("refresh")
-        if not refresh_token:
-            return Response({"detail": "refresh token required"}, status=400)
-
-        try:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-        except Exception:
-            return Response({"detail": "Invalid refresh token"}, status=400)
-
-        return Response({"detail": "Logged out"}, status=200)
+        ser = StaffLogoutRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response({"message": "Logged out"}, status=200)
 
 
-# -------- PUBLIC STAFF CATALOG --------
-
-class StaffListView(ListAPIView):
+class StaffTokenRefreshView(TokenRefreshView):
     permission_classes = [AllowAny]
-    serializer_class = StaffListSerializer
+    authentication_classes = []
+
+    @extend_schema(
+        tags=["auth_staff"],
+        request=TokenRefreshSerializer,
+        responses={200: StaffTokenRefreshResponseSerializer},
+        description="Staff token refresh (refresh -> new access)."
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+
+class StaffProfileView(APIView):
+    authentication_classes = [StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsStaff]
+
+    @extend_schema(
+        tags=["auth_staff"],
+        responses={200: StaffProfileSerializer},
+        description="Staff o‘z profilini ko‘radi."
+    )
+    def get(self, request):
+        return Response(StaffProfileSerializer(request.user).data, status=200)
+
+    @extend_schema(
+        tags=["auth_staff"],
+        request=StaffProfileUpdateRequestSerializer,
+        responses={200: StaffProfileSerializer},
+        description="Staff profilini to‘liq update qiladi."
+    )
+    def put(self, request):
+        ser = StaffProfileUpdateRequestSerializer(request.user, data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(StaffProfileSerializer(request.user).data, status=200)
+
+    @extend_schema(
+        tags=["auth_staff"],
+        request=StaffProfileUpdateRequestSerializer,
+        responses={200: StaffProfileSerializer},
+        description="Staff profilini qisman update qiladi."
+    )
+    def patch(self, request):
+        ser = StaffProfileUpdateRequestSerializer(request.user, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(StaffProfileSerializer(request.user).data, status=200)
+
+
+class StaffProfileImageView(APIView):
+    authentication_classes = [StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsStaff]
+
+    @extend_schema(
+        tags=["auth_staff"],
+        request=StaffImageUpdateRequestSerializer,
+        responses={200: StaffPublicDetailSerializer},
+        description="Staff rasmni alohida update qiladi (multipart/form-data)."
+    )
+    def put(self, request):
+        ser = StaffImageUpdateRequestSerializer(request.user, data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(StaffPublicDetailSerializer(request.user).data, status=200)
+
+
+class StaffResetPasswordView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        tags=["auth_staff"],
+        request=StaffResetPasswordRequestSerializer,
+        responses={200: MessageSerializer, 400: OpenApiResponse(description="Validation error")},
+        description="Staff reset password. RESET OTP verified bo‘lishi shart."
+    )
+    def post(self, request):
+        ser = StaffResetPasswordRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        email = ser.validated_data["email"]
+        password = ser.validated_data["password"]
+
+        user = Staff.objects.filter(email=email).first()
+        if not user:
+            return Response({"detail": "Staff topilmadi."}, status=400)
+
+        if not user.is_email_verified:
+            return Response({"detail": "Email tasdiqlanmagan."}, status=400)
+
+        user.set_password(password)
+        user.save(update_fields=["password", "updated_at"])
+        return Response({"message": "Password updated successfully"}, status=200)
+
+
+class StaffPublicListView(generics.ListAPIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    serializer_class = StaffPublicListSerializer
+    queryset = Staff.objects.filter(is_active=True, is_email_verified=True)
 
     @extend_schema(
         tags=["staff"],
         parameters=[
-            OpenApiParameter(name="search", type=str, required=False, description="first_name, last_name, profession bo‘yicha qidiruv"),
+            OpenApiParameter(name="search", required=False, type=str, description="Search: first_name, last_name, profession"),
         ],
-        responses={200: StaffListSerializer(many=True)}
+        responses={200: StaffPublicListSerializer(many=True)},
+        description="Public staff list (qidiruv bilan)."
     )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    def get_queryset(self):
-        qs = Staff.objects.filter(is_active=True)
-
-        search = self.request.query_params.get("search")
-        if search:
-            qs = qs.filter(
-                Q(first_name__icontains=search)
-                | Q(last_name__icontains=search)
-                | Q(profession__icontains=search)
-            )
-
-        # Review modeli bor bo'lsa annotate ishlaydi:
-        # from reviews.models import Review
-        qs = qs.annotate(
-            avg_rating=Avg("review__stars"),
-            ratings_count=Count("review", distinct=True),
-        )
-        return qs
-
-
-class StaffDetailView(RetrieveAPIView):
-    permission_classes = [AllowAny]
-    serializer_class = StaffDetailSerializer
-    queryset = Staff.objects.filter(is_active=True)
-
-    @extend_schema(tags=["staff"], responses={200: StaffDetailSerializer})
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
         qs = super().get_queryset()
-        return qs.annotate(
-            avg_rating=Avg("review__stars"),
-            ratings_count=Count("review", distinct=True),
-            reviews_text_count=Count("review", filter=Q(review__text__isnull=False) & ~Q(review__text=""), distinct=True),
-        )
+        s = (self.request.query_params.get("search") or "").strip()
+        if s:
+            qs = qs.filter(
+                models.Q(first_name__icontains=s) |
+                models.Q(last_name__icontains=s) |
+                models.Q(profession__icontains=s)
+            )
+        return qs
 
 
-class StaffResetPasswordView(GenericAPIView):
+class StaffPublicDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
-    serializer_class = StaffResetPasswordSerializer
+    authentication_classes = []
+    serializer_class = StaffPublicDetailSerializer
+
+    def get_queryset(self):
+        qs = Staff.objects.filter(is_active=True, is_email_verified=True)
+
+        # reviews app bo‘lmasa ham yiqilmasin
+        try:
+            # related_name="reviews"
+            qs = qs.annotate(
+                avg_star=Avg("reviews__stars"),
+                ratings_count=Count("reviews"),
+                text_reviews_count=Count("reviews", filter=Q(reviews__text__gt="")),
+            )
+        except Exception:
+            # fallback: annotate bo‘lmasa ham detail ishlasin
+            qs = qs.annotate(
+                avg_star=Avg("id"),          # dummy (hech kim foydalanmaydi)
+                ratings_count=Count("id"),    # dummy
+                text_reviews_count=Count("id")# dummy
+            )
+
+        return qs
 
     @extend_schema(
-        tags=["auth_staff"],
-        request=StaffResetPasswordSerializer,
-        responses={200: MessageSerializer},
-        description=(
-            "OTP verified bo‘lgandan keyin parolni yangilaydi. "
-            "Oldin /api/auth/staff/send-email/ (PURPOSE_RESET), keyin /verify-email/ qilish shart."
-        )
+        tags=["staff"],
+        responses={200: StaffPublicDetailSerializer},
+        description="Public staff detail + review statistics (avg_star, ratings_count, text_reviews_count)."
     )
-    def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        email = serializer.validated_data["email"]
-
-        otp = EmailOTP.objects.filter(
-            email=email,
-            purpose=EmailOTP.PURPOSE_RESET,
-            state=EmailOTP.STATE_VERIFIED
-        ).last()
-
-        if not otp:
-            return Response(
-                {"error": "Avval emailga yuborilgan kodni tasdiqlang"},
-                status=400
-            )
-
-        try:
-            staff = Staff.objects.get(email=email)
-        except Staff.DoesNotExist:
-            return Response(
-                {"error": "Staff topilmadi"},
-                status=404
-            )
-
-        staff.set_password(serializer.validated_data["password"])
-        staff.save(update_fields=["password"])
-
-        otp.state = EmailOTP.STATE_USED
-        otp.save(update_fields=["state"])
-
-        return Response(
-            {"message": "Parol muvaffaqiyatli yangilandi"},
-            status=200
-        )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)

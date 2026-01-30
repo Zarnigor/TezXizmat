@@ -6,7 +6,7 @@ class IsCustomer(BasePermission):
         if not user or not user.is_authenticated:
             return False
 
-        # variant A: token claim / user attribute
+
         role = getattr(user, "role", None)
         if role == "customer":
             return True

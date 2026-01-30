@@ -1,16 +1,26 @@
-# staff/tokens.py
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-def create_staff_tokens(staff):
-    # RefreshToken() userga bog'liq emas, manual claim qo'yamiz
-    refresh = RefreshToken()
-    refresh["role"] = "staff"
-    refresh["staff_id"] = staff.id
-    refresh["email"] = staff.email
 
-    access = refresh.access_token
-    access["role"] = "staff"
-    access["staff_id"] = staff.id
-    access["email"] = staff.email
+class StaffTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        refresh = RefreshToken.for_user(user)
 
-    return {"refresh": str(refresh), "access": str(access)}
+        # refresh claims
+        refresh["user_type"] = "user"
+        refresh["user_id"] = user.id
+        refresh["email"] = user.email
+
+        access = refresh.access_token
+
+        # access claims
+        access["user_type"] = "user"
+        access["user_id"] = user.id
+        access["email"] = user.email
+
+        return {
+            "refresh": str(refresh),
+            "access": str(access),
+        }
+
