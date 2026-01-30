@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     CustomerRegisterView, CustomerLoginView, CustomerLogoutView,
     CustomerTokenRefreshView, CustomerProfileView, CustomerProfileImageView,
-    CustomerResetPasswordView,
+    CustomerResetPasswordView, CustomerDeleteAccountView,
 )
 
 urlpatterns = [
@@ -13,4 +13,5 @@ urlpatterns = [
     path("profile/", CustomerProfileView.as_view()),
     path("profile/image/", CustomerProfileImageView.as_view()),
     path("reset-password/", CustomerResetPasswordView.as_view()),
+    path("delete/", CustomerDeleteAccountView.as_view())
 ]

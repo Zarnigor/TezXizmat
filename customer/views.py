@@ -235,3 +235,38 @@ class CustomerResetPasswordView(APIView):
 #             return Response(CustomerMiniSerializer(target).data, status=200)
 #
 #         return Response({"detail": "Forbidden"}, status=403)
+
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema, OpenApiResponse
+from .serializers import DeleteAccountSerializer
+from auth_customer.authentication import CustomerJWTAuthentication
+from .permissions import IsCustomer
+
+
+class CustomerDeleteAccountView(APIView):
+    authentication_classes = [CustomerJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    @extend_schema(
+        tags=["auth_customer"],
+        request=DeleteAccountSerializer,
+        responses={
+            200: OpenApiResponse(description="Customer account deleted"),
+            400: OpenApiResponse(description="Password invalid"),
+            401: OpenApiResponse(description="Unauthorized"),
+        },
+        description="Customer o'z accountini parol bilan tasdiqlab o'chiradi."
+    )
+    def delete(self, request):
+        serializer = DeleteAccountSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+
+        # Agar media/rasm yoki related cleanup bo‘lsa shu yerda qilinadi
+
+        user.delete()
+        return Response({"message": "Account o'chirildi"}, status=status.HTTP_200_OK)

@@ -151,6 +151,22 @@ class CustomerResetPasswordRequestSerializer(serializers.Serializer):
         return attrs
 
 
+class DeleteAccountSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate_password(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if not user or not user.is_authenticated:
+            raise serializers.ValidationError("Authentication required")
+
+        if not user.check_password(value):
+            raise serializers.ValidationError("Parol xato")
+
+        return value
+
+
 class MessageSerializer(serializers.Serializer):
     message = serializers.CharField()
 

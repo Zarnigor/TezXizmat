@@ -74,6 +74,7 @@ class StaffRegisterRequestSerializer(serializers.Serializer):
             password=validated_data["password"],
             first_name=validated_data["first_name"].strip(),
             last_name=validated_data["last_name"].strip(),
+            is_email_verified=True
         )
         return user
 
@@ -103,8 +104,21 @@ class StaffPublicListSerializer(serializers.ModelSerializer):
         fields = ("id", "first_name", "last_name", "image", "profession")
 
 
-from rest_framework import serializers
-from .models import Staff
+class DeleteAccountSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate_password(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if not user or not user.is_authenticated:
+            raise serializers.ValidationError("Authentication required")
+
+        if not user.check_password(value):
+            raise serializers.ValidationError("Parol xato")
+
+        return value
+
 
 class StaffPublicDetailSerializer(serializers.ModelSerializer):
     avg_star = serializers.FloatField(read_only=True)

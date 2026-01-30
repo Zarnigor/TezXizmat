@@ -20,7 +20,7 @@ class StaffTokenObtainPairSerializer(TokenObtainPairSerializer):
         access["email"] = user.email
 
         return {
-            "refresh": str(refresh),
-            "access": str(access),
+            "refresh_token": str(refresh),
+            "access_token": str(access),
         }
 

@@ -23,8 +23,9 @@ from .serializers import (
     StaffResetPasswordRequestSerializer,
     StaffPublicListSerializer,
     StaffPublicDetailSerializer,
-    MessageSerializer, StaffTokenRefreshResponseSerializer,
+    MessageSerializer, StaffTokenRefreshResponseSerializer, DeleteAccountSerializer,
 )
+from .authentication import StaffJWTAuthentication
 from .tokens import StaffTokenObtainPairSerializer
 from django.db.models import Avg, Count, Q
 from rest_framework import generics
@@ -250,7 +251,6 @@ class StaffPublicDetailView(generics.RetrieveAPIView):
                 text_reviews_count=Count("reviews", filter=Q(reviews__text__gt="")),
             )
         except Exception:
-            # fallback: annotate bo‘lmasa ham detail ishlasin
             qs = qs.annotate(
                 avg_star=Avg("id"),          # dummy (hech kim foydalanmaydi)
                 ratings_count=Count("id"),    # dummy
@@ -266,3 +266,26 @@ class StaffPublicDetailView(generics.RetrieveAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+
+class StaffDeleteAccountView(APIView):
+    authentication_classes = [StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsStaff]
+
+    @extend_schema(
+        tags=["auth_staff"],
+        request=DeleteAccountSerializer,
+        responses={
+            200: OpenApiResponse(description="Staff account deleted"),
+            400: OpenApiResponse(description="Password invalid"),
+            401: OpenApiResponse(description="Unauthorized"),
+        },
+        description="Staff o'z accountini parol bilan tasdiqlab o'chiradi."
+    )
+    def delete(self, request):
+        serializer = DeleteAccountSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+
+        staff = request.user
+        staff.delete()
+        return Response({"message": "Account o'chirildi"}, status=status.HTTP_200_OK)

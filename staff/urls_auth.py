@@ -6,7 +6,7 @@ from .views import (
     StaffTokenRefreshView,
     StaffProfileView,
     StaffProfileImageView,
-    StaffResetPasswordView,
+    StaffResetPasswordView, StaffDeleteAccountView,
 )
 
 urlpatterns = [
@@ -17,4 +17,5 @@ urlpatterns = [
     path("profile/", StaffProfileView.as_view()),
     path("profile/image/", StaffProfileImageView.as_view()),
     path("reset-password/", StaffResetPasswordView.as_view()),
+    path("delete/", StaffDeleteAccountView.as_view())
 ]
