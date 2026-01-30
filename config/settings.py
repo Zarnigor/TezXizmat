@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'drf_yasg',
     'django_rest_passwordreset',
 
+
     # Local apps
     'email_otp',
     'customer',
@@ -129,10 +130,38 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Customer va Staff auth alohida",
     "VERSION": "1.0.0",
 
-        "SECURITY_SCHEMES": {
-        "customerBearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
-        "staffBearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+
+    # ✅ 2 ta JWT scheme ni schema'ga qo‘shamiz
+    # (COMPONENTS ham bo‘ladi, lekin APPEND_COMPONENTS eng ishonchli)
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "customerBearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Customer JWT: Bearer <access>",
+            },
+            "staffBearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Staff JWT: Bearer <access>",
+            },
+        }
     },
+
+    # ✅ Swagger’da Authorize chiqishi uchun global SECURITY berib qo‘yamiz
+    # (keyin xohlasang endpoint-level security’ga o‘tkazamiz)
+    "SECURITY": [
+        {"customerBearerAuth": []},
+        {"staffBearerAuth": []},
+    ],
+
+    "DISABLE_AUTH": False,
+    "SORT_OPERATIONS": True,
+    "SORT_OPERATION_PARAMETERS": True,
 }
 
 

@@ -3,6 +3,10 @@ from django.utils import timezone
 from django.conf import settings
 from django.core.mail import send_mail
 from rest_framework.exceptions import ValidationError
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
 
 from .models import EmailOTP
 from .utils import generate_otp
