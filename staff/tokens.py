@@ -2,25 +2,25 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 class StaffTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
-        refresh = RefreshToken.for_user(user)
+        token = super().get_token(user)  # bu RefreshToken
 
         # refresh claims
-        refresh["user_type"] = "user"
-        refresh["user_id"] = user.id
-        refresh["email"] = user.email
+        token["user_type"] = "staff"
+        token["user_id"] = user.id
+        token["email"] = user.email
+        return token
 
-        access = refresh.access_token
+    def validate(self, attrs):
+        data = super().validate(attrs)  # default: {"refresh": "...", "access": "..."}
 
-        # access claims
-        access["user_type"] = "user"
-        access["user_id"] = user.id
-        access["email"] = user.email
+        # xohlasangiz key nomlarini o'zgartirib berasiz:
+        data["refresh_token"] = data.pop("refresh")
+        data["access_token"] = data.pop("access")
 
-        return {
-            "refresh_token": str(refresh),
-            "access_token": str(access),
-        }
+        return data
 

@@ -242,7 +242,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from .serializers import DeleteAccountSerializer
-from auth_customer.authentication import CustomerJWTAuthentication
+from .authentication import CustomerJWTAuthentication
 from .permissions import IsCustomer
 
 

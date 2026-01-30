@@ -107,3 +107,43 @@ class ReviewDetailView(APIView):
     def get(self, request, id: int):
         review = get_object_or_404(Review, id=id)
         return Response(ReviewSerializer(review).data, status=200)
+
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from drf_spectacular.utils import extend_schema, OpenApiResponse
+
+from staff.authentication import StaffJWTAuthentication
+from .models import Review
+from .serializers import ReviewSerializer
+
+
+class StaffMyReviewsView(APIView):
+    authentication_classes = [StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["reviews"],
+        responses={
+            200: ReviewSerializer(many=True),
+            401: OpenApiResponse(description="Unauthorized"),
+            403: OpenApiResponse(description="Staff token required"),
+        },
+        description="Hozirgi staffga yozilgan barcha baholar (my received reviews)."
+    )
+    def get(self, request):
+        # Auth class token staff bo‘lmasa request.user None bo‘lishi mumkin,
+        # IsAuthenticated buni to‘xtatadi, lekin qo‘shimcha xavfsizlik:
+        if request.user.__class__.__name__ != "Staff":
+            return Response({"detail": "Staff token required"}, status=403)
+
+        qs = (
+            Review.objects
+            .select_related("customer", "staff")
+            .filter(staff=request.user)
+            .order_by("-created_at")
+        )
+
+        return Response(ReviewSerializer(qs, many=True).data, status=200)
