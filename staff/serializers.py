@@ -33,12 +33,12 @@ def _email_exists_in_customer(email: str) -> bool:
 class StaffRegisterRequestSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=80)
     last_name = serializers.CharField(max_length=80)
-    profession = serializers.CharField(max_length=120)
-
-    description = serializers.CharField(required=False, allow_blank=True)
-    skills_text = serializers.CharField(required=False, allow_blank=True)
-    price_text = serializers.CharField(required=False, allow_blank=True)
-    free_time_text = serializers.CharField(required=False, allow_blank=True)
+    # profession = serializers.CharField(max_length=120)
+    #
+    # description = serializers.CharField(required=False, allow_blank=True)
+    # skills_text = serializers.CharField(required=False, allow_blank=True)
+    # price_text = serializers.CharField(required=False, allow_blank=True)
+    # free_time_text = serializers.CharField(required=False, allow_blank=True)
 
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -74,12 +74,6 @@ class StaffRegisterRequestSerializer(serializers.Serializer):
             password=validated_data["password"],
             first_name=validated_data["first_name"].strip(),
             last_name=validated_data["last_name"].strip(),
-            profession=validated_data["profession"].strip(),
-            description=(validated_data.get("description") or "").strip(),
-            skills_text=(validated_data.get("skills_text") or "").strip(),
-            price_text=(validated_data.get("price_text") or "").strip(),
-            free_time_text=(validated_data.get("free_time_text") or "").strip(),
-            is_email_verified=True,
         )
         return user
 
@@ -106,7 +100,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
 class StaffPublicListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Staff
-        fields = ("id", "first_name", "last_name", "image", "profession", "price_text")
+        fields = ("id", "first_name", "last_name", "image", "profession")
 
 
 from rest_framework import serializers
