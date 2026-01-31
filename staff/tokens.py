@@ -1,7 +1,3 @@
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
-
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class StaffTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -23,4 +19,3 @@ class StaffTokenObtainPairSerializer(TokenObtainPairSerializer):
         data["access_token"] = data.pop("access")
 
         return data
-

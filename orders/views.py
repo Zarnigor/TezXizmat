@@ -120,6 +120,12 @@ class OrderAcceptView(APIView):
             return Response({"detail": "Order faqat PENDING bo‘lsa qabul qilinadi."}, status=400)
 
         order.status = Order.Status.ACCEPTED
+        from chat.models import ChatRoom
+        ChatRoom.objects.get_or_create(
+            order=order,
+            defaults={"customer": order.customer, "staff": order.staff},
+        )
+
         order.accepted_at = timezone.now()
         order.save(update_fields=["status", "accepted_at", "updated_at"])
         return Response(OrderDetailSerializer(order).data, status=200)

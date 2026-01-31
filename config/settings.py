@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'drf_yasg',
     'django_rest_passwordreset',
+    'channels',
 
 
     # Local apps
@@ -36,7 +37,8 @@ INSTALLED_APPS = [
     'customer',
     'staff',
     'orders',
-    'reviews'
+    'reviews',
+    'chat'
 ]
 
 MIDDLEWARE = [

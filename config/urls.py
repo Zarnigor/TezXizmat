@@ -20,6 +20,8 @@ urlpatterns = [
     path("api/", include("staff.urls_public")),
     path("api/orders/", include("orders.urls")),
     path("api/reviews/", include("reviews.urls")),
+    path("api/", include("chat.urls"))
+
 ]
 
 if settings.DEBUG:

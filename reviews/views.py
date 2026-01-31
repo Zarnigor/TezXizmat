@@ -85,7 +85,7 @@ class MyReviewsView(APIView):
     @extend_schema(
         tags=["reviews"],
         responses={200: ReviewSerializer(many=True)},
-        description="Hozirgi customer tomonidan berilgan baholar."
+        description="Hozirgi Customer tomonidan berilgan baholar."
     )
     def get(self, request):
         if request.user.__class__.__name__ != "Customer":
