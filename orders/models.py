@@ -30,5 +30,12 @@ class Order(models.Model):
 
     updated_at = models.DateTimeField(auto_now=True)
 
+    deleted_by_customer = models.BooleanField(default=False)
+    deleted_by_staff = models.BooleanField(default=False)
+
+    @property
+    def deleted_for_both(self):
+        return self.deleted_by_customer and self.deleted_by_staff
+
     def __str__(self):
         return f"Order #{self.id} {self.status}"

@@ -1,26 +1,22 @@
-from django.utils import timezone
+from customer.authentication import CustomerJWTAuthentication
 from django.shortcuts import get_object_or_404
-
-from rest_framework.views import APIView
+from django.utils import timezone
+from drf_spectacular.utils import extend_schema, OpenApiResponse
+from orders.models import Order
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
-
-from drf_spectacular.utils import extend_schema, OpenApiResponse
-
-from customer.authentication import CustomerJWTAuthentication
+from rest_framework.views import APIView
 from staff.authentication import StaffJWTAuthentication
 from staff.models import Staff
 
 from .models import Order
+from .permissions import IsOrderParticipant
 from .serializers import (
     OrderCreateRequestSerializer,
     OrderCancelRequestSerializer,
     OrderListSerializer,
     OrderDetailSerializer,
-    MessageSerializer,
 )
-from .permissions import IsOrderParticipant
 
 
 class OrderCreateView(APIView):
@@ -234,3 +230,42 @@ class OrderCancelView(APIView):
         order.save(update_fields=["status", "canceled_at", "cancel_reason", "canceled_by", "updated_at"])
 
         return Response(OrderDetailSerializer(order).data, status=200)
+
+
+
+
+class OrderHideView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["orders"],
+        request=OrderCancelRequestSerializer,
+        responses={200: "Deleted", 400: OpenApiResponse(description="Invalid state")},
+        description="Faqat Canceled bo'lgan orderni o'zingizdan o'chirish"
+    )
+    def delete(self, request, id):
+        order = get_object_or_404(Order, id=id)
+
+        # faqat CANCELED bo‘lsa
+        if order.status != Order.Status.CANCELED:
+            return Response({"detail": "Faqat CANCELED orderni o‘chirish mumkin."}, status=400)
+
+        user_type = request.user.__class__.__name__
+
+        # faqat participant bo‘lsa
+        if user_type == "Customer":
+            if order.customer_id != request.user.id:
+                return Response({"detail": "Bu order sizniki emas."}, status=403)
+            order.deleted_by_customer = True
+
+        elif user_type == "Staff":
+            if order.staff_id != request.user.id:
+                return Response({"detail": "Bu order sizniki emas."}, status=403)
+            order.deleted_by_staff = True
+
+        else:
+            return Response({"detail": "Noto‘g‘ri user."}, status=403)
+
+        order.save(update_fields=["deleted_by_customer", "deleted_by_staff", "updated_at"])
+
+        return Response({"detail": "Order siz uchun o‘chirildi (yashirildi)."}, status=204)

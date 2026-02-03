@@ -1,4 +1,6 @@
 from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission
+from .models import Order
 
 class IsOrderParticipant(BasePermission):
     """
@@ -12,4 +14,22 @@ class IsOrderParticipant(BasePermission):
             return obj.customer_id == user.id
         if user.__class__.__name__ == "Staff":
             return obj.staff_id == user.id
+        return False
+
+
+class CanDeleteCanceledOrder(BasePermission):
+    message = "Faqat CANCEL qilingan orderni va faqat o'zingiznikini o'chira olasiz."
+
+    def has_object_permission(self, request, view, obj: Order):
+        if obj.status != Order.Status.CANCELED:
+            return False
+
+        user = request.user
+
+        if user.__class__.__name__ == "Customer":
+            return obj.customer_id == user.id
+
+        if user.__class__.__name__ == "Staff":
+            return obj.staff_id == user.id
+
         return False

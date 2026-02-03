@@ -8,7 +8,7 @@ from .views import (
     OrderStartView,
     OrderCompleteByStaffView,
     OrderCompleteByCustomerView,
-    OrderCancelView,
+    OrderCancelView, OrderHideView,
 )
 
 urlpatterns = [
@@ -21,4 +21,5 @@ urlpatterns = [
     path("<int:id>/complete-by-staff/", OrderCompleteByStaffView.as_view()),
     path("<int:id>/confirm-completion/", OrderCompleteByCustomerView.as_view()),
     path("<int:id>/cancel/", OrderCancelView.as_view()),
+    path("<int:id>/delete/", OrderHideView.as_view()),
 ]
