@@ -1,4 +1,5 @@
 from customer.authentication import CustomerJWTAuthentication
+from customer.authentication import CustomerJWTAuthentication
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from orders.models import Order
@@ -8,8 +9,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from staff.authentication import StaffJWTAuthentication
+from staff.authentication import StaffJWTAuthentication
 
-from .models import ChatRoom, ChatMessage
+from .models import ChatMessage
+from .models import ChatRoom
 from .permissions import IsChatParticipant
 from .serializers import ChatRoomSerializer, ChatMessageSerializer, SendMessageRequestSerializer
 from .serializers import RoomFindRequestSerializer, RoomFindResponseSerializer
@@ -147,3 +150,39 @@ class RoomFindView(APIView):
             return Response({"detail": "Room not found"}, status=status.HTTP_404_NOT_FOUND)
 
         return Response({"room_id": room.id}, status=status.HTTP_200_OK)
+
+
+class ChatDeleteView(APIView):
+    """
+    Chatni faqat o'zidan delete qilish
+    """
+    authentication_classes = [
+        CustomerJWTAuthentication,
+        StaffJWTAuthentication,
+    ]
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, room_id: int):
+        room = get_object_or_404(ChatRoom, id=room_id)
+
+        user = request.user
+        user_type = user.__class__.__name__
+
+        if user_type == "Customer":
+            if room.customer_id != user.id:
+                return Response({"detail": "Forbidden"}, status=403)
+
+            room.deleted_by_customer = True
+            room.save(update_fields=["deleted_by_customer"])
+
+        elif user_type == "Staff":
+            if room.staff_id != user.id:
+                return Response({"detail": "Forbidden"}, status=403)
+
+            room.deleted_by_staff = True
+            room.save(update_fields=["deleted_by_staff"])
+
+        else:
+            return Response({"detail": "Invalid user"}, status=403)
+
+        return Response({"detail": "Chat deleted for you"})

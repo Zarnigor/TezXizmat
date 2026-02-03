@@ -21,6 +21,8 @@ class ChatRoom(models.Model):
         on_delete=models.CASCADE,
         related_name="chat_rooms",
     )
+    deleted_by_customer = models.BooleanField(default=False)
+    deleted_by_staff = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(default=timezone.now)
 
