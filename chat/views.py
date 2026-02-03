@@ -1,188 +1,280 @@
-from customer.authentication import CustomerJWTAuthentication
-from customer.authentication import CustomerJWTAuthentication
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema, OpenApiResponse
-from orders.models import Order
-from rest_framework import status
-from rest_framework.permissions import AllowAny
+from django.utils import timezone
+
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from staff.authentication import StaffJWTAuthentication
-from staff.authentication import StaffJWTAuthentication
 
-from .models import ChatMessage
-from .models import ChatRoom
-from .permissions import IsChatParticipant
-from .serializers import ChatRoomSerializer, ChatMessageSerializer, SendMessageRequestSerializer
-from .serializers import RoomFindRequestSerializer, RoomFindResponseSerializer
+from drf_spectacular.utils import extend_schema, OpenApiResponse
+
+from .models import ChatRoom, ChatMessage
+from .serializers import (
+    ChatRoomOutSerializer,
+    ChatRoomCreateInSerializer,
+    ChatMessageOutSerializer,
+    ChatMessageSendInSerializer,
+)
+
+# Sizda mavjud bo‘lsa shularni qo‘ying:
+# from your_project.auth import CustomerJWTAuthentication, StaffJWTAuthentication
 
 
-def _chat_allowed(order: Order) -> bool:
-    # pending => yo'q, canceled => yo'q
-    if order.status == Order.Status.PENDING:
+def _user_type(user):
+    n = user.__class__.__name__
+    if n == "Customer":
+        return "customer"
+    if n == "Staff":
+        return "staff"
+    return None
+
+
+def _check_room_participant_or_403(request, room: ChatRoom):
+    ut = _user_type(request.user)
+    if ut == "customer" and room.customer_id != request.user.id:
         return False
-    if order.status == Order.Status.CANCELED:
+    if ut == "staff" and room.staff_id != request.user.id:
         return False
-    # accepted va undan keyin => bor
-    return True
+    return ut is not None
 
 
-class ChatRoomListView(APIView):
-    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
+# -------------------------------------------------
+# POST /api/chat/rooms/create/
+# -------------------------------------------------
+class ChatRoomCreateView(APIView):
+    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["chat"],
-        responses={200: ChatRoomSerializer(many=True)},
-        description="Userga tegishli chat roomlar ro'yxati."
+        request=ChatRoomCreateInSerializer,
+        responses={
+            200: ChatRoomOutSerializer,
+            201: ChatRoomOutSerializer,
+            400: OpenApiResponse(description="Invalid input"),
+            403: OpenApiResponse(description="Invalid user"),
+        },
+        description="Chat room yaratadi yoki mavjud bo‘lsa qaytaradi (customer+staff unique).",
+    )
+    def post(self, request):
+        ut = _user_type(request.user)
+        if ut is None:
+            return Response({"detail": "Invalid user"}, status=403)
+
+        inp = ChatRoomCreateInSerializer(data=request.data)
+        inp.is_valid(raise_exception=True)
+        order_id = inp.validated_data.get("order_id")
+
+        if ut == "customer":
+            staff_id = inp.validated_data.get("staff_id")
+            if not staff_id:
+                return Response({"detail": "staff_id required"}, status=400)
+
+            room, created = ChatRoom.objects.get_or_create(
+                customer=request.user,
+                staff_id=staff_id,
+                defaults={"order_id": order_id} if order_id else {},
+            )
+        else:
+            customer_id = inp.validated_data.get("customer_id")
+            if not customer_id:
+                return Response({"detail": "customer_id required"}, status=400)
+
+            room, created = ChatRoom.objects.get_or_create(
+                staff=request.user,
+                customer_id=customer_id,
+                defaults={"order_id": order_id} if order_id else {},
+            )
+
+        # optional: kelgan order_id ni set qilish
+        if order_id and room.order_id is None:
+            room.order_id = order_id
+            room.save(update_fields=["order"])
+
+        # Agar user o'zidan delete qilgan bo'lsa, create qilganda "restore" bo'lsin
+        if ut == "customer" and room.deleted_by_customer:
+            room.deleted_by_customer = False
+            room.save(update_fields=["deleted_by_customer"])
+        if ut == "staff" and room.deleted_by_staff:
+            room.deleted_by_staff = False
+            room.save(update_fields=["deleted_by_staff"])
+
+        room._last_message_cache = room.messages.order_by("-created_at").first()
+
+        status_code = 201 if created else 200
+        return Response(
+            ChatRoomOutSerializer(room, context={"request": request}).data,
+            status=status_code,
+        )
+
+
+# -------------------------------------------------
+# POST /api/rooms/find/   (eski endpoint qoladi)
+# -------------------------------------------------
+class ChatRoomFindView(APIView):
+    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["chat"],
+        request=ChatRoomCreateInSerializer,
+        responses={200: ChatRoomOutSerializer, 201: ChatRoomOutSerializer},
+        description="create endpoint bilan bir xil: room topadi yoki yaratadi.",
+    )
+    def post(self, request):
+        # ichida aynan create view logikasi
+        return ChatRoomCreateView().post(request)
+
+
+# -------------------------------------------------
+# GET /api/chat/rooms/
+# -------------------------------------------------
+class ChatRoomListView(APIView):
+    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["chat"],
+        responses={200: ChatRoomOutSerializer(many=True)},
+        description="Userga tegishli chat roomlar (last_message, unread count bilan).",
     )
     def get(self, request):
-        if request.user.__class__.__name__ == "Customer":
-            qs = ChatRoom.objects.select_related("customer", "staff", "order").filter(customer=request.user)
-        elif request.user.__class__.__name__ == "Staff":
-            qs = ChatRoom.objects.select_related("customer", "staff", "order").filter(staff=request.user)
+        ut = _user_type(request.user)
+        if ut == "customer":
+            qs = (
+                ChatRoom.objects
+                .select_related("customer", "staff")
+                .filter(customer=request.user, deleted_by_customer=False)
+            )
+        elif ut == "staff":
+            qs = (
+                ChatRoom.objects
+                .select_related("customer", "staff")
+                .filter(staff=request.user, deleted_by_staff=False)
+            )
         else:
             return Response({"detail": "Invalid user"}, status=403)
 
-        # faqat chat allowed orderlar (accepted+)
-        qs = [r for r in qs if _chat_allowed(r.order)]
-        return Response(ChatRoomSerializer(qs, many=True).data, status=200)
+        rooms = list(qs.order_by("-created_at"))
 
+        # last_message cache (N+1 bo'ladi, lekin sodda; keyin optimize qilamiz)
+        for r in rooms:
+            r._last_message_cache = r.messages.order_by("-created_at").first()
 
-class ChatMessageListView(APIView):
-    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
-    permission_classes = [IsAuthenticated, IsChatParticipant]
-
-    @extend_schema(
-        tags=["chat"],
-        responses={200: ChatMessageSerializer(many=True), 403: OpenApiResponse(description="Forbidden")},
-        description="Tanlangan room ichidagi barcha xabarlar."
-    )
-    def get(self, request, room_id: int):
-        room = get_object_or_404(ChatRoom.objects.select_related("order", "customer", "staff"), id=room_id)
-        self.check_object_permissions(request, room)
-
-        if not _chat_allowed(room.order):
-            return Response({"detail": "Chat faqat order ACCEPTED bo'lgandan keyin ishlaydi."}, status=400)
-
-        qs = ChatMessage.objects.filter(room=room).order_by("created_at")
-        return Response(ChatMessageSerializer(qs, many=True).data, status=200)
-
-
-class ChatSendMessageView(APIView):
-    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
-    permission_classes = [IsAuthenticated, IsChatParticipant]
-
-    @extend_schema(
-        tags=["chat"],
-        request=SendMessageRequestSerializer,
-        responses={201: ChatMessageSerializer, 400: OpenApiResponse(description="Invalid")},
-        description="Roomga yangi xabar yuborish (REST)."
-    )
-    def post(self, request, room_id: int):
-        room = get_object_or_404(ChatRoom.objects.select_related("order", "customer", "staff"), id=room_id)
-        self.check_object_permissions(request, room)
-
-        if not _chat_allowed(room.order):
-            return Response({"detail": "Chat faqat order ACCEPTED bo'lgandan keyin ishlaydi."}, status=400)
-
-        ser = SendMessageRequestSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-
-        if request.user.__class__.__name__ == "Customer":
-            msg = ChatMessage.objects.create(room=room, sender_customer=request.user, text=ser.validated_data["text"])
-        else:
-            msg = ChatMessage.objects.create(room=room, sender_staff=request.user, text=ser.validated_data["text"])
-
-        # WS broadcast (REST orqali yuborilganda ham real-time)
-        # optional: agar channel layer bo'lsa broadcast qilamiz
-        try:
-            from asgiref.sync import async_to_sync
-            from chat.layers import get_channel_layer
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                f"chat_{room.id}",
-                {
-                    "type": "chat.message",
-                    "message": {
-                        "id": msg.id,
-                        "text": msg.text,
-                        "sender_type": msg.sender_type(),
-                        "created_at": msg.created_at.isoformat(),
-                    },
-                },
-            )
-        except Exception:
-            pass
-
-        return Response(ChatMessageSerializer(msg).data, status=201)
-
-
-
-class RoomFindView(APIView):
-    permission_classes = [AllowAny]  # keyin token bilan yopamiz
-
-    @extend_schema(
-        tags=["chat"],
-        request=RoomFindRequestSerializer,
-        responses={
-            200: RoomFindResponseSerializer,
-            404: OpenApiResponse(description="Room not found"),
-        },
-        description="customer_id va staff_id bo‘yicha mavjud roomni topib room_id qaytaradi."
-    )
-    def post(self, request):
-        ser = RoomFindRequestSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-
-        customer_id = ser.validated_data["customer_id"]
-        staff_id = ser.validated_data["staff_id"]
-
-        room = (
-            ChatRoom.objects
-            .filter(customer_id=customer_id, staff_id=staff_id)
-            .order_by("-created_at")
-            .first()
+        return Response(
+            ChatRoomOutSerializer(rooms, many=True, context={"request": request}).data,
+            status=200,
         )
 
-        if not room:
-            return Response({"detail": "Room not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({"room_id": room.id}, status=status.HTTP_200_OK)
-
-
-class ChatDeleteView(APIView):
-    """
-    Chatni faqat o'zidan delete qilish
-    """
-    authentication_classes = [
-        CustomerJWTAuthentication,
-        StaffJWTAuthentication,
-    ]
+# -------------------------------------------------
+# GET /api/chat/rooms/{room_id}/messages/
+# (bu chaqirilganda last_read_at update qilamiz)
+# -------------------------------------------------
+class ChatRoomMessagesView(APIView):
+    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["chat"],
+        responses={200: ChatMessageOutSerializer(many=True)},
+        description="Roomdagi message'lar ro'yxati. GET bo‘lganda 'read' qilib qo‘yadi.",
+    )
+    def get(self, request, room_id: int):
+        room = get_object_or_404(ChatRoom.objects.select_related("customer", "staff"), id=room_id)
+
+        if not _check_room_participant_or_403(request, room):
+            return Response({"detail": "Forbidden"}, status=403)
+
+        msgs = room.messages.all().order_by("created_at")
+
+        # read time update
+        now = timezone.now()
+        ut = _user_type(request.user)
+        if ut == "customer":
+            ChatRoom.objects.filter(id=room.id).update(customer_last_read_at=now)
+        elif ut == "staff":
+            ChatRoom.objects.filter(id=room.id).update(staff_last_read_at=now)
+
+        return Response(ChatMessageOutSerializer(msgs, many=True).data, status=200)
+
+
+# -------------------------------------------------
+# POST /api/chat/rooms/{room_id}/send/
+# -------------------------------------------------
+class ChatRoomSendMessageView(APIView):
+    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["chat"],
+        request=ChatMessageSendInSerializer,
+        responses={201: ChatMessageOutSerializer},
+        description="Roomga message yuborish.",
+    )
+    def post(self, request, room_id: int):
+        room = get_object_or_404(ChatRoom.objects.select_related("customer", "staff"), id=room_id)
+
+        if not _check_room_participant_or_403(request, room):
+            return Response({"detail": "Forbidden"}, status=403)
+
+        inp = ChatMessageSendInSerializer(data=request.data)
+        inp.is_valid(raise_exception=True)
+
+        ut = _user_type(request.user)
+        create_kwargs = {"room": room, "text": inp.validated_data["text"]}
+
+        if ut == "customer":
+            create_kwargs["sender_customer"] = request.user
+        elif ut == "staff":
+            create_kwargs["sender_staff"] = request.user
+        else:
+            return Response({"detail": "Invalid user"}, status=403)
+
+        msg = ChatMessage.objects.create(**create_kwargs)
+
+        # sender o'zini read qilib qo'ysin
+        now = timezone.now()
+        if ut == "customer":
+            ChatRoom.objects.filter(id=room.id).update(customer_last_read_at=now)
+        else:
+            ChatRoom.objects.filter(id=room.id).update(staff_last_read_at=now)
+
+        return Response(ChatMessageOutSerializer(msg).data, status=201)
+
+
+# -------------------------------------------------
+# DELETE /api/chat/{room_id}/delete/
+# (faqat o'zidan o'chiradi, ikkovi ham o'chirsa dbdan delete)
+# -------------------------------------------------
+class ChatRoomDeleteView(APIView):
+    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["chat"],
+        responses={204: OpenApiResponse(description="Deleted")},
+        description="Chatni faqat o'zidan o‘chiradi (soft). Ikkalasi ham o‘chirsa room dbdan o‘chadi.",
+    )
     def delete(self, request, room_id: int):
         room = get_object_or_404(ChatRoom, id=room_id)
+        ut = _user_type(request.user)
 
-        user = request.user
-        user_type = user.__class__.__name__
-
-        if user_type == "Customer":
-            if room.customer_id != user.id:
+        if ut == "customer":
+            if room.customer_id != request.user.id:
                 return Response({"detail": "Forbidden"}, status=403)
-
             room.deleted_by_customer = True
             room.save(update_fields=["deleted_by_customer"])
 
-        elif user_type == "Staff":
-            if room.staff_id != user.id:
+        elif ut == "staff":
+            if room.staff_id != request.user.id:
                 return Response({"detail": "Forbidden"}, status=403)
-
             room.deleted_by_staff = True
             room.save(update_fields=["deleted_by_staff"])
 
         else:
             return Response({"detail": "Invalid user"}, status=403)
 
-        return Response({"detail": "Chat deleted for you"})
+        if room.deleted_by_customer and room.deleted_by_staff:
+            room.delete()
+
+        return Response(status=204)
