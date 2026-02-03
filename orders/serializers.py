@@ -87,6 +87,14 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         }
 
 
+from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
+
+from orders.models import Order
+#from customer.serializers import CustomerPublicOutSerializer
+#from staff.serializers import StaffPublicOutSerializer
+
+
 class OrderListSerializer(serializers.ModelSerializer):
     customer = serializers.SerializerMethodField()
     staff = serializers.SerializerMethodField()
@@ -99,10 +107,11 @@ class OrderListSerializer(serializers.ModelSerializer):
             "address",
             "problem_text",
             "customer",
-            "staff"
+            "staff",
+            "created_at",
+            # xohlasangiz qo‘shasiz:
             # "customer_id",
             # "staff_id",
-            "created_at",
         )
 
     @extend_schema_field(CustomerPublicOutSerializer)
