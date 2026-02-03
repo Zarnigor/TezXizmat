@@ -88,6 +88,9 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
 
 class OrderListSerializer(serializers.ModelSerializer):
+    customer = serializers.SerializerMethodField()
+    staff = serializers.SerializerMethodField()
+
     class Meta:
         model = Order
         fields = (
@@ -95,10 +98,37 @@ class OrderListSerializer(serializers.ModelSerializer):
             "status",
             "address",
             "problem_text",
-            "customer_id",
-            "staff_id",
+            "customer",
+            "staff"
+            # "customer_id",
+            # "staff_id",
             "created_at",
         )
+
+    @extend_schema_field(CustomerPublicOutSerializer)
+    def get_customer(self, obj):
+        c = obj.customer
+        return {
+            "id": c.id,
+            "first_name": c.first_name,
+            "last_name": c.last_name,
+            "image": c.image.url if getattr(c, "image", None) else None,
+        }
+
+    @extend_schema_field(StaffPublicOutSerializer)
+    def get_staff(self, obj):
+        s = obj.staff
+        return {
+            "id": s.id,
+            "first_name": s.first_name,
+            "last_name": s.last_name,
+            "image": s.image.url if getattr(s, "image", None) else None,
+            "profession": s.profession,
+            "description": s.description,
+            "skills_text": s.skills_text,
+            "price_text": s.price_text,
+            "free_time_text": s.free_time_text,
+        }
 
 
 class MessageSerializer(serializers.Serializer):
