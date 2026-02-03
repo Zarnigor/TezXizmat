@@ -1,18 +1,17 @@
+from customer.authentication import CustomerJWTAuthentication
 from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
-
-from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-
 from drf_spectacular.utils import extend_schema, OpenApiResponse
-
-from customer.authentication import CustomerJWTAuthentication
-from staff.authentication import StaffJWTAuthentication  # detail/listlarda kerak bo‘lishi mumkin
 from orders.models import Order
+from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from staff.authentication import StaffJWTAuthentication
+
 from .models import Review
-from .serializers import ReviewCreateRequestSerializer, ReviewSerializer, MessageSerializer
+from .serializers import ReviewCreateRequestSerializer
+from .serializers import ReviewSerializer
 
 
 class ReviewCreateView(APIView):
@@ -108,16 +107,6 @@ class ReviewDetailView(APIView):
         review = get_object_or_404(Review, id=id)
         return Response(ReviewSerializer(review).data, status=200)
 
-from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-
-from drf_spectacular.utils import extend_schema, OpenApiResponse
-
-from staff.authentication import StaffJWTAuthentication
-from .models import Review
-from .serializers import ReviewSerializer
 
 
 class StaffMyReviewsView(APIView):
@@ -147,3 +136,35 @@ class StaffMyReviewsView(APIView):
         )
 
         return Response(ReviewSerializer(qs, many=True).data, status=200)
+
+
+class ReviewDeleteView(APIView):
+    """
+    Customer faqat o'zi yozgan reviewni o‘chirishi mumkin
+    """
+    authentication_classes = [CustomerJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, id: int):
+        # faqat customer token
+        if request.user.__class__.__name__ != "Customer":
+            return Response(
+                {"detail": "Customer token required"},
+                status=403
+            )
+
+        review = get_object_or_404(Review, id=id)
+
+        # o‘ziga tegishlimi?
+        if review.customer_id != request.user.id:
+            return Response(
+                {"detail": "You can delete only your own review"},
+                status=403
+            )
+
+        review.delete()
+        return Response(
+            {"detail": "Review deleted successfully"},
+            status=204
+        )
+
