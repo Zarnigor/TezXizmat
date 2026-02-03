@@ -15,9 +15,8 @@ from .serializers import (
     ChatMessageSendInSerializer,
 )
 
-# Sizda mavjud bo‘lsa shularni qo‘ying:
-# from your_project.auth import CustomerJWTAuthentication, StaffJWTAuthentication
-
+from customer.authentication import CustomerJWTAuthentication
+from staff.authentication import StaffJWTAuthentication
 
 def _user_type(user):
     n = user.__class__.__name__
@@ -41,7 +40,7 @@ def _check_room_participant_or_403(request, room: ChatRoom):
 # POST /api/chat/rooms/create/
 # -------------------------------------------------
 class ChatRoomCreateView(APIView):
-    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -111,7 +110,7 @@ class ChatRoomCreateView(APIView):
 # POST /api/rooms/find/   (eski endpoint qoladi)
 # -------------------------------------------------
 class ChatRoomFindView(APIView):
-    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -129,7 +128,7 @@ class ChatRoomFindView(APIView):
 # GET /api/chat/rooms/
 # -------------------------------------------------
 class ChatRoomListView(APIView):
-    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -171,7 +170,7 @@ class ChatRoomListView(APIView):
 # (bu chaqirilganda last_read_at update qilamiz)
 # -------------------------------------------------
 class ChatRoomMessagesView(APIView):
-    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -202,7 +201,7 @@ class ChatRoomMessagesView(APIView):
 # POST /api/chat/rooms/{room_id}/send/
 # -------------------------------------------------
 class ChatRoomSendMessageView(APIView):
-    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -247,7 +246,7 @@ class ChatRoomSendMessageView(APIView):
 # (faqat o'zidan o'chiradi, ikkovi ham o'chirsa dbdan delete)
 # -------------------------------------------------
 class ChatRoomDeleteView(APIView):
-    authentication_classes = []  # [CustomerJWTAuthentication, StaffJWTAuthentication]
+    authentication_classes = [CustomerJWTAuthentication, StaffJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
