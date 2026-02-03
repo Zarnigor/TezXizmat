@@ -1,27 +1,7 @@
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
-
+from orders.serializers import CustomerPublicOutSerializer, StaffPublicOutSerializer
 from .models import ChatRoom, ChatMessage
-
-
-class CustomerPublicOutSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-    image = serializers.CharField(allow_null=True)
-
-
-class StaffPublicOutSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-    image = serializers.CharField(allow_null=True)
-
-    profession = serializers.CharField()
-    description = serializers.CharField(allow_blank=True)
-    skills_text = serializers.CharField(allow_blank=True)
-    price_text = serializers.CharField(allow_blank=True)
-    free_time_text = serializers.CharField(allow_blank=True)
 
 
 class ChatRoomSerializer(serializers.ModelSerializer):
@@ -71,3 +51,11 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
 class SendMessageRequestSerializer(serializers.Serializer):
     text = serializers.CharField()
+
+
+class RoomFindRequestSerializer(serializers.Serializer):
+    customer_id = serializers.IntegerField()
+    staff_id = serializers.IntegerField()
+
+class RoomFindResponseSerializer(serializers.Serializer):
+    room_id = serializers.IntegerField()

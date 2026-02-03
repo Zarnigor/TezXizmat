@@ -1,18 +1,18 @@
+from customer.authentication import CustomerJWTAuthentication
 from django.shortcuts import get_object_or_404
-from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema, OpenApiResponse
+from orders.models import Order
+from rest_framework import status
+from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
-
-from drf_spectacular.utils import extend_schema, OpenApiResponse
-
-from customer.authentication import CustomerJWTAuthentication
+from rest_framework.views import APIView
 from staff.authentication import StaffJWTAuthentication
 
-from orders.models import Order
 from .models import ChatRoom, ChatMessage
-from .serializers import ChatRoomSerializer, ChatMessageSerializer, SendMessageRequestSerializer
 from .permissions import IsChatParticipant
+from .serializers import ChatRoomSerializer, ChatMessageSerializer, SendMessageRequestSerializer
+from .serializers import RoomFindRequestSerializer, RoomFindResponseSerializer
 
 
 def _chat_allowed(order: Order) -> bool:
@@ -114,3 +114,36 @@ class ChatSendMessageView(APIView):
             pass
 
         return Response(ChatMessageSerializer(msg).data, status=201)
+
+
+
+class RoomFindView(APIView):
+    permission_classes = [AllowAny]  # keyin token bilan yopamiz
+
+    @extend_schema(
+        tags=["chat"],
+        request=RoomFindRequestSerializer,
+        responses={
+            200: RoomFindResponseSerializer,
+            404: OpenApiResponse(description="Room not found"),
+        },
+        description="customer_id va staff_id bo‘yicha mavjud roomni topib room_id qaytaradi."
+    )
+    def post(self, request):
+        ser = RoomFindRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        customer_id = ser.validated_data["customer_id"]
+        staff_id = ser.validated_data["staff_id"]
+
+        room = (
+            ChatRoom.objects
+            .filter(customer_id=customer_id, staff_id=staff_id)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if not room:
+            return Response({"detail": "Room not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({"room_id": room.id}, status=status.HTTP_200_OK)
